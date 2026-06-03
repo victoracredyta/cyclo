@@ -1,12 +1,17 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Bell, Search, Moon, Sun, ChevronDown } from 'lucide-react'
+import {
+  Bell, Search, Moon, Sun, ChevronDown,
+  LayoutDashboard, Users, Kanban, Bot, Settings,
+  Palette, LogOut, User, Zap, DollarSign, HelpCircle,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { useUIStore } from '@/store/useUIStore'
@@ -93,34 +98,85 @@ export function Topbar({ userName, userEmail, userAvatar, notificationCount = 0 
 
       {/* User menu */}
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg hover:bg-muted px-2 py-1 transition-colors outline-none">
-          <Avatar className="h-7 w-7">
-            <AvatarImage src={userAvatar} />
-            <AvatarFallback className="bg-[#5B8CFF] text-white text-xs font-semibold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="hidden md:block text-left">
-            <p className="text-sm font-medium text-foreground leading-none">{userName ?? 'Usuário'}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">{userEmail}</p>
-          </div>
-          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden md:block" />
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center gap-2 rounded-lg hover:bg-muted px-2 py-1.5 transition-colors outline-none">
+            <Avatar className="h-7 w-7">
+              <AvatarImage src={userAvatar} />
+              <AvatarFallback className="bg-[#5B8CFF] text-white text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="hidden md:block text-left">
+              <p className="text-sm font-medium text-foreground leading-none">{userName ?? 'Usuário'}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">{userEmail}</p>
+            </div>
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden md:block" />
+          </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel className="font-normal">
-            <p className="font-medium text-sm">{userName}</p>
-            <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+        <DropdownMenuContent align="end" sideOffset={8} className="w-56">
+          {/* User info */}
+          <DropdownMenuLabel className="font-normal pb-2">
+            <div className="flex items-center gap-2.5">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={userAvatar} />
+                <AvatarFallback className="bg-[#5B8CFF] text-white text-xs font-semibold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm truncate">{userName}</p>
+                <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+              </div>
+            </div>
           </DropdownMenuLabel>
+
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push('/configuracoes/perfil')}>
-            Meu perfil
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push('/configuracoes')}>
-            Configurações
-          </DropdownMenuItem>
+
+          {/* Navegação rápida */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider px-2 py-1">
+              Navegação rápida
+            </DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => router.push('/dashboard')} className="gap-2 cursor-pointer">
+              <LayoutDashboard className="w-4 h-4 text-muted-foreground" /> Dashboard
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/crm')} className="gap-2 cursor-pointer">
+              <Users className="w-4 h-4 text-muted-foreground" /> CRM — Clientes
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/pipeline')} className="gap-2 cursor-pointer">
+              <Kanban className="w-4 h-4 text-muted-foreground" /> Pipeline de Vendas
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/ia')} className="gap-2 cursor-pointer">
+              <Bot className="w-4 h-4 text-muted-foreground" /> CYCLO AI
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
-            Sair
+
+          {/* Configurações */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider px-2 py-1">
+              Conta
+            </DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => router.push('/configuracoes')} className="gap-2 cursor-pointer">
+              <Settings className="w-4 h-4 text-muted-foreground" /> Configurações
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/whitelabel')} className="gap-2 cursor-pointer">
+              <Palette className="w-4 h-4 text-muted-foreground" /> White Label
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/financeiro')} className="gap-2 cursor-pointer">
+              <DollarSign className="w-4 h-4 text-muted-foreground" /> Financeiro
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/automacoes')} className="gap-2 cursor-pointer">
+              <Zap className="w-4 h-4 text-muted-foreground" /> Automações
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={handleSignOut}
+            className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+          >
+            <LogOut className="w-4 h-4" /> Sair da plataforma
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
