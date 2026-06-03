@@ -352,8 +352,11 @@ export function AgencyOnboarding({ initialOrgName, orgId }: Props) {
                   <Button variant="ghost" onClick={prevStep} className="text-white/50 hover:text-white">
                     <ChevronLeft className="w-4 h-4 mr-1" /> Voltar
                   </Button>
+                  <Button variant="ghost" onClick={nextStep} className="text-white/40 hover:text-white border border-white/10 hover:border-white/30">
+                    Pular por agora
+                  </Button>
                   <Button onClick={nextStep} className="flex-1 bg-[#5B8CFF] hover:bg-[#4a7aee] text-white font-semibold">
-                    {data.teamInvites.length > 0 ? `Convidar ${data.teamInvites.length} pessoa(s)` : 'Pular por agora'}
+                    {data.teamInvites.length > 0 ? `Convidar ${data.teamInvites.length} pessoa(s)` : 'Avançar'}
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 </div>
