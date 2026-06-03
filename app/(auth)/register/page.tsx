@@ -49,32 +49,22 @@ export default function RegisterPage() {
       return
     }
 
-    const slug = data.agencyName
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: authData.user.id,
+        email: data.email,
+        fullName: data.fullName,
+        agencyName: data.agencyName,
+      }),
+    })
 
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .insert({ name: data.agencyName, slug })
-      .select()
-      .single()
-
-    if (orgError || !org) {
-      setError('Erro ao criar organização')
+    if (!res.ok) {
+      const body = await res.json()
+      setError(body.error ?? 'Erro ao criar organização')
       return
     }
-
-    await supabase.from('users').insert({
-      id: authData.user.id,
-      organization_id: org.id,
-      full_name: data.fullName,
-      email: data.email,
-      role: 'Fundador',
-      permission: 'Admin',
-    })
 
     router.push('/onboarding/agency')
   }
