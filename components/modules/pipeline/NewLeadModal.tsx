@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
-import { Loader2, ChevronDown } from 'lucide-react'
+import { Loader2, ChevronDown, Search, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PipelineStage } from '@/types/database'
 import type { LeadWithResponsible } from './PipelineBoard'
@@ -21,6 +21,7 @@ const schema = z.object({
   value: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
+  city: z.string().optional(),
   origin: z.string().optional(),
   customOrigin: z.string().optional(),
   priority: z.enum(['alta', 'media', 'baixa']),
@@ -88,11 +89,36 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
   const [responsibleId, setResponsibleId] = useState('')
   const [selectedOrigin, setSelectedOrigin] = useState('')
   const [temp, setTemp] = useState<'alta' | 'media' | 'baixa'>('media')
+  const [cnpjInput, setCnpjInput] = useState('')
+  const [cnpjLoading, setCnpjLoading] = useState(false)
 
-  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, getValues, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { stage_id: initialStageId, priority: 'media' },
   })
+
+  const lookupCnpj = async () => {
+    const clean = cnpjInput.replace(/\D/g, '')
+    if (clean.length !== 14) { toast.error('Digite um CNPJ com 14 dígitos'); return }
+    setCnpjLoading(true)
+    const res = await fetch(`/api/cnpj/${clean}`)
+    if (!res.ok) {
+      toast.error('CNPJ não encontrado na Receita Federal')
+      setCnpjLoading(false)
+      return
+    }
+    const data = await res.json()
+    const companyName = data.nome_fantasia || data.razao_social || ''
+    if (companyName) setValue('company', companyName)
+    if (data.email) setValue('email', data.email)
+    if (data.ddd_telefone_1) {
+      const phone = data.ddd_telefone_1.replace(/\D/g, '')
+      setValue('phone', phone.length >= 10 ? `(${phone.slice(0,2)}) ${phone.slice(2,7)}-${phone.slice(7)}` : phone)
+    }
+    if (data.municipio && data.uf) setValue('city', `${data.municipio} (${data.uf})`)
+    setCnpjLoading(false)
+    toast.success(`Dados de ${companyName || data.razao_social} carregados!`)
+  }
 
   const stageName = stages.find(s => s.id === stageId)?.name ?? null
   const responsibleName = users.find(u => u.id === responsibleId)?.full_name ?? null
@@ -113,6 +139,7 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
       value: data.value ? Number(data.value) : undefined,
       email: data.email || undefined,
       phone: data.phone || undefined,
+      city: data.city || undefined,
       origin: finalOrigin || undefined,
       priority: data.priority,
       responsible_id: data.responsible_id || undefined,
@@ -131,6 +158,35 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
           <DialogTitle className="text-base font-semibold">Novo lead</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 mt-1">
+          {/* CNPJ lookup */}
+          <div className="p-3 bg-muted/30 rounded-lg border border-border space-y-1.5">
+            <Label className="text-xs font-semibold flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+              Buscar empresa pelo CNPJ — auto-preenche os campos
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                value={cnpjInput}
+                onChange={e => setCnpjInput(e.target.value)}
+                placeholder="00.000.000/0001-00"
+                className="h-8 text-sm font-mono"
+                maxLength={18}
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), lookupCnpj())}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 px-3 gap-1.5 text-xs shrink-0"
+                onClick={lookupCnpj}
+                disabled={cnpjLoading}
+              >
+                {cnpjLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                Buscar
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 space-y-1.5">
               <Label className="text-sm">Nome do contato *</Label>
@@ -152,6 +208,10 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
             <div className="space-y-1.5">
               <Label className="text-sm">Telefone</Label>
               <Input placeholder="(11) 99999-9999" {...register('phone')} />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-sm">Cidade</Label>
+              <Input placeholder="São Paulo (SP)" {...register('city')} />
             </div>
 
             {/* Stage — controlled, no UUID leak */}
