@@ -22,23 +22,31 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: typeof C
   cancelado: { label: 'Cancelado', cls: 'bg-muted/60 text-muted-foreground border-0', icon: AlertCircle },
 }
 
-const PLAN_CONFIG: Record<string, { label: string; color: string; price: string; features: string[] }> = {
-  free: {
-    label: 'Gratuito', color: '#6B7280', price: 'R$ 0/mês',
-    features: ['Até 3 clientes', '1 usuário', 'Funcionalidades básicas'],
+const PLAN_CONFIG: Record<string, { label: string; color: string; price: string; features: string[]; extra?: string }> = {
+  cyclo: {
+    label: 'CYCLO', color: '#5B8CFF', price: 'R$ 59/mês',
+    extra: '+ R$ 29 por usuário adicional',
+    features: [
+      'Até 4 usuários inclusos',
+      'Clientes e vendas ilimitados',
+      'Pipeline de Vendas com Kanban',
+      'CRM completo — Clientes Ativos',
+      'Agenda com feriados nacionais',
+      'Envio de Email com templates',
+      'CYCLO IA — assistente inteligente',
+      'Relatórios e Metas',
+      'Aprovações de conteúdo',
+      'Automações de fluxo',
+      'White Label — sua marca na plataforma',
+      'Integrações (WordPress, Meta, Google)',
+      'Funis múltiplos e gestão de tags',
+    ],
   },
-  starter: {
-    label: 'Starter', color: '#5B8CFF', price: 'R$ 197/mês',
-    features: ['Até 10 clientes', '3 usuários', 'CRM + Pipeline + Planner', 'Aprovações'],
-  },
-  pro: {
-    label: 'Pro', color: '#8B5CF6', price: 'R$ 397/mês',
-    features: ['Clientes ilimitados', '10 usuários', 'Todos os módulos', 'CYCLO AI', 'White Label'],
-  },
-  agency: {
-    label: 'Agency', color: '#F59E0B', price: 'R$ 797/mês',
-    features: ['Multi-agência', 'Usuários ilimitados', 'API access', 'Suporte prioritário', 'Onboarding dedicado'],
-  },
+  // Legacy keys (keep for DB compatibility)
+  free: { label: 'CYCLO', color: '#5B8CFF', price: 'R$ 59/mês', features: [] },
+  starter: { label: 'CYCLO', color: '#5B8CFF', price: 'R$ 59/mês', features: [] },
+  pro: { label: 'CYCLO', color: '#5B8CFF', price: 'R$ 59/mês', features: [] },
+  agency: { label: 'CYCLO', color: '#5B8CFF', price: 'R$ 59/mês', features: [] },
 }
 
 function buildMrrChart(clients: ClientRow[]) {
@@ -70,7 +78,7 @@ export function FinanceiroClient({ invoices, clients, plan, hasStripe }: Props) 
   const totalReceived = paidInvoices.reduce((s, i) => s + i.amount, 0)
   const totalPending = pendingInvoices.reduce((s, i) => s + i.amount, 0)
   const mrrChart = buildMrrChart(clients)
-  const planCfg = PLAN_CONFIG[plan] ?? PLAN_CONFIG.free
+  const planCfg = PLAN_CONFIG.cyclo
 
   const exportInvoices = () => {
     const rows = [['Data', 'Valor', 'Status', 'Vencimento', 'Pago em']]
@@ -244,72 +252,67 @@ export function FinanceiroClient({ invoices, clients, plan, hasStripe }: Props) 
 
       {/* Tab: Plano */}
       {tab === 'plano' && (
-        <div className="space-y-4">
-          {/* Current plan */}
-          <Card className="border-border shadow-none">
+        <div className="space-y-4 max-w-2xl">
+          {/* Current plan — CYCLO único */}
+          <Card className="border-[#5B8CFF]/30 shadow-none" style={{ background: 'linear-gradient(135deg, #5B8CFF08, transparent)' }}>
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${planCfg.color}15` }}>
-                  <Zap className="w-6 h-6" style={{ color: planCfg.color }} />
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#5B8CFF15' }}>
+                  <Zap className="w-6 h-6 text-[#5B8CFF]" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-bold text-base">Plano {planCfg.label}</h3>
-                    <Badge className="text-[10px] border-0 font-semibold" style={{ backgroundColor: `${planCfg.color}15`, color: planCfg.color }}>
-                      Atual
-                    </Badge>
+                    <h3 className="font-bold text-base">Plano CYCLO</h3>
+                    <Badge className="text-[10px] border-0 font-semibold bg-[#5B8CFF]/15 text-[#5B8CFF]">Seu plano</Badge>
                   </div>
-                  <p className="text-xl font-bold mb-3">{planCfg.price}</p>
-                  <ul className="space-y-1">
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <p className="text-2xl font-bold">R$ 59<span className="text-base font-normal text-muted-foreground">/mês</span></p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Inclui até 4 usuários · + R$ 29/mês por usuário adicional
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {planCfg.features.map(f => (
-                      <li key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <li key={f} className="flex items-center gap-2 text-sm text-muted-foreground list-none">
                         <CheckCircle className="w-3.5 h-3.5 text-[#12B981] shrink-0" />
                         {f}
                       </li>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Upgrade options */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {Object.entries(PLAN_CONFIG)
-              .filter(([key]) => key !== plan)
-              .map(([key, cfg]) => (
-                <Card key={key} className="border-border shadow-none hover:border-[#5B8CFF]/40 transition-colors cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-sm">{cfg.label}</span>
-                      <span className="text-sm font-bold" style={{ color: cfg.color }}>{cfg.price}</span>
-                    </div>
-                    <ul className="space-y-1 mb-3">
-                      {cfg.features.slice(0, 3).map(f => (
-                        <li key={f} className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          <span className="w-1 h-1 rounded-full" style={{ background: cfg.color }} />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button size="sm" variant="outline" className="w-full text-xs" onClick={() => toast.info('Entre em contato para fazer upgrade')}>
-                      Fazer upgrade
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            }
-          </div>
+          {/* Usuários adicionais */}
+          <Card className="border-border shadow-none">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-[#12B981]/10">
+                <CreditCard className="w-5 h-5 text-[#12B981]" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm">Adicionar usuários ao plano</p>
+                <p className="text-xs text-muted-foreground">R$ 29/mês por usuário extra. Adicione quantos precisar sem limite.</p>
+              </div>
+              <Button size="sm" variant="outline" className="text-xs shrink-0" onClick={() => toast.info('Entre em contato: victor.hugo@acredyta.com.br')}>
+                Solicitar
+              </Button>
+            </CardContent>
+          </Card>
 
+          {/* Stripe */}
           {!hasStripe && (
             <Card className="border-[#F59E0B]/30 bg-[#F59E0B]/5 shadow-none">
               <CardContent className="p-4 flex items-start gap-3">
                 <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-semibold">Stripe não conectado</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Conecte o Stripe para emitir e gerenciar faturas automaticamente.</p>
-                  <Button size="sm" className="mt-2 h-7 text-xs bg-[#F59E0B] hover:bg-[#d97706] text-white" onClick={() => toast.info('Configure STRIPE_SECRET_KEY no .env')}>
-                    Conectar Stripe
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Conecte o Stripe para emitir faturas e gerenciar assinaturas automaticamente.
+                    O Stripe é uma plataforma de pagamentos segura e amplamente usada no Brasil.
+                  </p>
+                  <Button size="sm" className="mt-2 h-7 text-xs bg-[#F59E0B] hover:bg-[#d97706] text-white" onClick={() => toast.info('Para conectar o Stripe, configure STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET nas variáveis de ambiente do projeto.')}>
+                    Como conectar o Stripe
                   </Button>
                 </div>
               </CardContent>

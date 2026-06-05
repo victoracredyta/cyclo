@@ -9,10 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2 } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
+import { Loader2, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
-import type { PipelineStage, Lead } from '@/types/database'
+import type { PipelineStage } from '@/types/database'
 import type { LeadWithResponsible } from './PipelineBoard'
 
 const schema = z.object({
@@ -38,6 +38,12 @@ const ORIGINS = [
   'Personalizado',
 ]
 
+const TEMP_OPTIONS = [
+  { value: 'alta' as const, label: '🔥 Quente — Alta prioridade' },
+  { value: 'media' as const, label: '🌡️ Morno — Média prioridade' },
+  { value: 'baixa' as const, label: '❄️ Frio — Baixa prioridade' },
+]
+
 interface NewLeadModalProps {
   stages: PipelineStage[]
   users: Array<{ id: string; full_name: string | null; avatar_url: string | null }>
@@ -46,12 +52,51 @@ interface NewLeadModalProps {
   onCreated: (lead: LeadWithResponsible) => void
 }
 
+function CustomSelect({
+  value,
+  placeholder,
+  displayText,
+  onValueChange,
+  children,
+  className,
+}: {
+  value: string
+  placeholder?: string
+  displayText: string | null
+  onValueChange: (v: string | null) => void
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger className={className ?? 'h-9 text-sm'}>
+        <span className={displayText ? 'text-foreground' : 'text-muted-foreground'}>
+          {displayText ?? placeholder ?? 'Selecione...'}
+        </span>
+        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground ml-auto shrink-0" />
+      </SelectTrigger>
+      <SelectContent>
+        {children}
+      </SelectContent>
+    </Select>
+  )
+}
+
 export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated }: NewLeadModalProps) {
+  const initialStageId = defaultStageId ?? stages[0]?.id ?? ''
+  const [stageId, setStageId] = useState(initialStageId)
+  const [responsibleId, setResponsibleId] = useState('')
   const [selectedOrigin, setSelectedOrigin] = useState('')
+  const [temp, setTemp] = useState<'alta' | 'media' | 'baixa'>('media')
+
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { stage_id: defaultStageId ?? stages[0]?.id, priority: 'media' },
+    defaultValues: { stage_id: initialStageId, priority: 'media' },
   })
+
+  const stageName = stages.find(s => s.id === stageId)?.name ?? null
+  const responsibleName = users.find(u => u.id === responsibleId)?.full_name ?? null
+  const tempLabel = TEMP_OPTIONS.find(t => t.value === temp)?.label ?? null
 
   const onSubmit = async (data: FormData) => {
     const supabase = createClient()
@@ -108,34 +153,43 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
               <Label className="text-sm">Telefone</Label>
               <Input placeholder="(11) 99999-9999" {...register('phone')} />
             </div>
+
+            {/* Stage — controlled, no UUID leak */}
             <div className="space-y-1.5">
               <Label className="text-sm">Etapa</Label>
-              <Select defaultValue={defaultStageId ?? stages[0]?.id} onValueChange={v => setValue('stage_id', v ?? '')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <CustomSelect
+                value={stageId}
+                displayText={stageName}
+                placeholder="Selecione a etapa"
+                onValueChange={v => { if (!v) return; setStageId(v); setValue('stage_id', v) }}
+              >
+                {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </CustomSelect>
             </div>
+
+            {/* Temperature */}
             <div className="space-y-1.5">
               <Label className="text-sm">Temperatura do Lead</Label>
-              <Select defaultValue="media" onValueChange={v => setValue('priority', (v ?? 'media') as 'alta' | 'media' | 'baixa')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="alta">🔥 Quente — Alta prioridade</SelectItem>
-                  <SelectItem value="media">🌡️ Morno — Média prioridade</SelectItem>
-                  <SelectItem value="baixa">❄️ Frio — Baixa prioridade</SelectItem>
-                </SelectContent>
-              </Select>
+              <CustomSelect
+                value={temp}
+                displayText={tempLabel}
+                onValueChange={v => { if (!v) return; setTemp(v as typeof temp); setValue('priority', v as typeof temp) }}
+              >
+                {TEMP_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </CustomSelect>
             </div>
+
+            {/* Origin */}
             <div className="col-span-2 space-y-1.5">
               <Label className="text-sm">Origem do Lead</Label>
-              <Select onValueChange={(v: string | null) => { if (!v) return; setSelectedOrigin(v); setValue('origin', v) }}>
-                <SelectTrigger><SelectValue placeholder="Como esse lead chegou?" /></SelectTrigger>
-                <SelectContent>
-                  {ORIGINS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <CustomSelect
+                value={selectedOrigin}
+                displayText={selectedOrigin || null}
+                placeholder="Como esse lead chegou?"
+                onValueChange={v => { if (!v) return; setSelectedOrigin(v); setValue('origin', v) }}
+              >
+                {ORIGINS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              </CustomSelect>
               {selectedOrigin === 'Personalizado' && (
                 <Input
                   placeholder="Digite a origem personalizada..."
@@ -144,15 +198,22 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
                 />
               )}
             </div>
+
+            {/* Responsible — controlled, no UUID leak */}
             <div className="col-span-2 space-y-1.5">
               <Label className="text-sm">Responsável</Label>
-              <Select onValueChange={v => setValue('responsible_id', v as string)}>
-                <SelectTrigger><SelectValue placeholder="Selecione o vendedor" /></SelectTrigger>
-                <SelectContent>
-                  {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <CustomSelect
+                value={responsibleId}
+                displayText={responsibleName}
+                placeholder="Selecione o vendedor"
+                onValueChange={v => { if (!v) return; setResponsibleId(v); setValue('responsible_id', v) }}
+              >
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
+                ))}
+              </CustomSelect>
             </div>
+
             <div className="col-span-2 space-y-1.5">
               <Label className="text-sm">Próxima ação</Label>
               <Input placeholder="Enviar proposta, Agendar reunião..." {...register('next_action')} />
