@@ -119,6 +119,7 @@ interface AutomacoesClientProps {
 export function AutomacoesClient({ automations: initial }: AutomacoesClientProps) {
   const [automations, setAutomations] = useState(initial)
   const [creating, setCreating] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
 
   const toggleStatus = async (id: string, current: string) => {
     const next = current === 'ativo' ? 'pausado' : 'ativo'
@@ -165,7 +166,11 @@ export function AutomacoesClient({ automations: initial }: AutomacoesClientProps
           <h2 className="text-xl font-bold">Automações</h2>
           <p className="text-sm text-muted-foreground">{active} ativas · {totalRuns} execuções</p>
         </div>
-        <Button size="sm" className="bg-[#5B8CFF] hover:bg-[#4a7aee] text-white gap-1.5 text-xs" disabled>
+        <Button
+          size="sm"
+          className="bg-[#5B8CFF] hover:bg-[#4a7aee] text-white gap-1.5 text-xs"
+          onClick={() => setShowTemplates(t => !t)}
+        >
           <Plus className="w-3.5 h-3.5" /> Nova automação
         </Button>
       </div>
@@ -189,33 +194,8 @@ export function AutomacoesClient({ automations: initial }: AutomacoesClientProps
         ))}
       </div>
 
-      {/* Automation list */}
-      {automations.length === 0 ? (
-        <div className="space-y-4">
-          <p className="text-sm font-semibold text-muted-foreground">Comece com um template:</p>
-          <div className="grid gap-3">
-            {EXAMPLE_AUTOMATIONS.map((ex, i) => (
-              <button
-                key={i}
-                onClick={() => createExample(ex)}
-                disabled={creating}
-                className="flex items-center gap-4 p-4 bg-card border border-dashed border-border rounded-xl hover:border-[#5B8CFF]/60 hover:bg-[#5B8CFF]/5 transition-all text-left group"
-              >
-                <div className="w-9 h-9 rounded-full bg-[#5B8CFF]/10 flex items-center justify-center shrink-0">
-                  <Zap className="w-4 h-4 text-[#5B8CFF]" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-sm">{ex.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{ex.desc}</p>
-                </div>
-                <Badge className="text-[10px] bg-[#5B8CFF]/10 text-[#5B8CFF] border-0 group-hover:bg-[#5B8CFF] group-hover:text-white transition-colors shrink-0">
-                  + Adicionar
-                </Badge>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
+      {/* Existing automations — always shown */}
+      {automations.length > 0 && (
         <div className="space-y-2">
           {automations.map((auto, i) => (
             <motion.div
@@ -271,6 +251,43 @@ export function AutomacoesClient({ automations: initial }: AutomacoesClientProps
               </div>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {/* Template picker — shown when empty OR when user clicks "Nova automação" */}
+      {(automations.length === 0 || showTemplates) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-muted-foreground">
+              {automations.length === 0 ? 'Comece com um template:' : 'Escolha um template para adicionar:'}
+            </p>
+            {automations.length > 0 && (
+              <button onClick={() => setShowTemplates(false)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Fechar
+              </button>
+            )}
+          </div>
+          <div className="grid gap-3">
+            {EXAMPLE_AUTOMATIONS.map((ex, i) => (
+              <button
+                key={i}
+                onClick={() => { createExample(ex); setShowTemplates(false) }}
+                disabled={creating}
+                className="flex items-center gap-4 p-4 bg-card border border-dashed border-border rounded-xl hover:border-[#5B8CFF]/60 hover:bg-[#5B8CFF]/5 transition-all text-left group"
+              >
+                <div className="w-9 h-9 rounded-full bg-[#5B8CFF]/10 flex items-center justify-center shrink-0">
+                  <Zap className="w-4 h-4 text-[#5B8CFF]" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{ex.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{ex.desc}</p>
+                </div>
+                <Badge className="text-[10px] bg-[#5B8CFF]/10 text-[#5B8CFF] border-0 group-hover:bg-[#5B8CFF] group-hover:text-white transition-colors shrink-0">
+                  + Adicionar
+                </Badge>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

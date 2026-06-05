@@ -43,6 +43,29 @@ const PERMISSION_CONFIG: Record<string, { label: string; color: string }> = {
   Visualizador: { label: 'Visualizador', color: '#6B7280' },
 }
 
+const PERMISSION_DESCRIPTIONS: Record<string, { title: string; items: string[] }> = {
+  Admin: {
+    title: 'Acesso total ao sistema',
+    items: ['Gerencia toda a equipe e permissões', 'Acesso a todos os funis e leads', 'Configura integrações, white label e planos', 'Visualiza todos os relatórios e financeiro'],
+  },
+  Gerente: {
+    title: 'Gestão de equipe e comercial',
+    items: ['Gerencia vendedores e distribui leads', 'Acessa todos os funis sob sua responsabilidade', 'Visualiza relatórios de performance da equipe', 'Não acessa configurações administrativas'],
+  },
+  'Social Media': {
+    title: 'Conteúdo e aprovações',
+    items: ['Cria e gerencia conteúdos para aprovação', 'Visualiza leads atribuídos a si', 'Acessa o portal de aprovações dos clientes', 'Sem acesso a financeiro ou permissões'],
+  },
+  Atendimento: {
+    title: 'Relacionamento com clientes',
+    items: ['Visualiza e atualiza leads atribuídos a si', 'Registra atividades e histórico de contato', 'Acessa agenda e tarefas próprias', 'Sem acesso a configurações ou relatórios gerais'],
+  },
+  Visualizador: {
+    title: 'Somente leitura',
+    items: ['Visualiza leads, pipeline e relatórios', 'Não pode editar ou criar registros', 'Ideal para diretores ou sócios observadores', 'Sem acesso a configurações'],
+  },
+}
+
 const FUNNEL_TYPES = ['Vendas', 'Marketing', 'Projetos', 'Prospecção', 'Pré-Vendas', 'Pós-Vendas', 'Administrativo']
 
 interface Funnel {
@@ -131,6 +154,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [role, setRole] = useState(appUser?.role ?? '')
   const [savingProfile, setSavingProfile] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [invitePermission, setInvitePermission] = useState('Social Media')
   const [inviting, setInviting] = useState(false)
 
   // Load from localStorage
@@ -411,16 +435,39 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                   <Label className="text-xs font-semibold">E-mail</Label>
                   <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="colaborador@email.com" type="email" className="h-9 text-sm" />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label className="text-xs font-semibold">Permissão</Label>
-                  <Select defaultValue="Social Media">
+                  <Select value={invitePermission} onValueChange={v => { if (v) setInvitePermission(v) }}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Object.entries(PERMISSION_CONFIG).map(([v, cfg]) => (
-                        <SelectItem key={v} value={v}>{cfg.label}</SelectItem>
+                        <SelectItem key={v} value={v}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: cfg.color }} />
+                            {cfg.label}
+                          </div>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+
+                  {/* Permission description */}
+                  {PERMISSION_DESCRIPTIONS[invitePermission] && (
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PERMISSION_CONFIG[invitePermission]?.color }} />
+                        <p className="text-xs font-semibold">{PERMISSION_DESCRIPTIONS[invitePermission].title}</p>
+                      </div>
+                      <ul className="space-y-1">
+                        {PERMISSION_DESCRIPTIONS[invitePermission].items.map((item, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                            <Check className="w-3 h-3 mt-0.5 shrink-0 text-[#12B981]" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 pt-1">
                   <Button variant="outline" className="flex-1 text-sm" onClick={() => setInviteOpen(false)}>Cancelar</Button>

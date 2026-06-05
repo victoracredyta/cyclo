@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Key, BarChart3, Mail, Globe,
   Copy, Check, Eye, EyeOff, ExternalLink,
-  Bot, Zap, ChevronRight, Code2, Info,
+  Bot, Zap, ChevronRight, Code2, Info, CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -75,7 +76,49 @@ function SecretField({ label, value, placeholder }: { label: string; value: stri
 }
 
 export function IntegracoesClient({ orgId, orgSlug }: Props) {
-  const [tab, setTab] = useState<Tab>('api')
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get('tab')
+    if (t === 'email' || t === 'api' || t === 'wordpress' || t === 'tracking') return t
+    return 'api'
+  })
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null)
+  const [gmailError, setGmailError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Read from localStorage for persistent state
+    const stored = localStorage.getItem('cyclo_gmail_email')
+    if (stored) setGmailEmail(stored)
+
+    // Pick up OAuth result from cookies (set by /api/auth/google/callback)
+    const getCookie = (name: string) => {
+      const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'))
+      return match ? decodeURIComponent(match[1]) : null
+    }
+    const email = getCookie('cyclo_gmail_email')
+    const accessToken = getCookie('cyclo_gmail_access_token')
+    const refreshToken = getCookie('cyclo_gmail_refresh_token')
+
+    if (email) {
+      setGmailEmail(email)
+      localStorage.setItem('cyclo_gmail_email', email)
+      if (accessToken) localStorage.setItem('cyclo_gmail_access_token', accessToken)
+      if (refreshToken) localStorage.setItem('cyclo_gmail_refresh_token', refreshToken)
+      // Clear cookies
+      ;['cyclo_gmail_email', 'cyclo_gmail_access_token', 'cyclo_gmail_refresh_token'].forEach(n => {
+        document.cookie = `${n}=; Max-Age=0; path=/`
+      })
+      toast.success('Gmail conectado com sucesso!')
+    }
+
+    // Handle error from OAuth callback
+    const gmailErrorParam = searchParams.get('gmail_error')
+    if (gmailErrorParam === 'no_client_id') {
+      setGmailError('Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nas variáveis de ambiente do servidor.')
+    } else if (gmailErrorParam) {
+      setGmailError('Não foi possível conectar o Gmail. Tente novamente.')
+    }
+  }, [])
   const webhookUrl = `https://cyclo-beta.vercel.app/api/leads/capture/${orgSlug || orgId}`
 
   // Elementor snippet that captures form submissions
@@ -391,27 +434,88 @@ document.addEventListener('wpcf7mailsent', function(event) {
         <div className="max-w-2xl space-y-6">
           <p className="text-sm text-muted-foreground">Conecte seu provedor de email para enviar e receber emails diretamente pelo CYCLO, com histórico completo no perfil de cada cliente.</p>
 
-          {[
-            { name: 'Gmail / Google Workspace', color: '#EA4335', desc: 'OAuth2 — login seguro com sua conta Google' },
-            { name: 'Microsoft Outlook / 365', color: '#0072C6', desc: 'OAuth2 — login seguro com sua conta Microsoft' },
-            { name: 'SMTP personalizado', color: '#6B7280', desc: 'Configure qualquer servidor SMTP (Zoho, Titan, Brevo...)' },
-          ].map(provider => (
-            <Card key={provider.name} className="border-border shadow-none">
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${provider.color}15` }}>
-                  <Mail className="w-5 h-5" style={{ color: provider.color }} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{provider.name}</p>
-                  <p className="text-xs text-muted-foreground">{provider.desc}</p>
-                </div>
-                <Button size="sm" variant="outline" className="text-xs gap-1.5 shrink-0"
-                  onClick={() => toast.info(`Configuração de ${provider.name} disponível em breve.`)}>
-                  Conectar <ChevronRight className="w-3 h-3" />
+          {/* Gmail error banner */}
+          {gmailError && (
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-xl dark:bg-red-950/20 dark:border-red-900/30">
+              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-red-700 dark:text-red-400">Erro na conexão com Gmail</p>
+                <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">{gmailError}</p>
+                {gmailError.includes('GOOGLE_CLIENT_ID') && (
+                  <p className="text-xs text-red-600 dark:text-red-500 mt-1">
+                    No painel da Vercel: Settings → Environment Variables → adicione GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET (obtidos em console.cloud.google.com).
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Gmail */}
+          <Card className={cn('border-border shadow-none', gmailEmail && 'border-[#12B981]/40')}>
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#EA433515' }}>
+                <Mail className="w-5 h-5" style={{ color: '#EA4335' }} />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm">Gmail / Google Workspace</p>
+                {gmailEmail ? (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#12B981]" />
+                    <p className="text-xs text-[#12B981] font-medium">Conectado como {gmailEmail}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">OAuth2 — login seguro com sua conta Google</p>
+                )}
+              </div>
+              {gmailEmail ? (
+                <Button size="sm" variant="outline" className="text-xs gap-1.5 shrink-0 text-red-500 hover:text-red-500 hover:bg-red-50 border-red-200"
+                  onClick={() => {
+                    localStorage.removeItem('cyclo_gmail_email')
+                    localStorage.removeItem('cyclo_gmail_access_token')
+                    localStorage.removeItem('cyclo_gmail_refresh_token')
+                    setGmailEmail(null)
+                    toast.success('Gmail desconectado')
+                  }}>
+                  Desconectar
                 </Button>
-              </CardContent>
-            </Card>
-          ))}
+              ) : (
+                <Button size="sm" className="text-xs gap-1.5 shrink-0 text-white" style={{ background: '#EA4335' }}
+                  onClick={() => { window.location.href = '/api/auth/google' }}>
+                  <Mail className="w-3 h-3" /> Conectar Gmail
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Outlook */}
+          <Card className="border-border shadow-none">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#0072C615' }}>
+                <Mail className="w-5 h-5" style={{ color: '#0072C6' }} />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm">Microsoft Outlook / 365</p>
+                <p className="text-xs text-muted-foreground">OAuth2 — login seguro com sua conta Microsoft</p>
+              </div>
+              <Button size="sm" variant="outline" className="text-xs gap-1.5 shrink-0"
+                onClick={() => toast.info('Integração Outlook em breve.')}>
+                Conectar <ChevronRight className="w-3 h-3" />
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* SMTP */}
+          <Card className="border-border shadow-none">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-muted">
+                <Mail className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm">SMTP personalizado</p>
+                <p className="text-xs text-muted-foreground">Configure qualquer servidor SMTP (Zoho, Titan, Brevo...)</p>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card className="border-border shadow-none">
             <CardHeader className="pb-3">

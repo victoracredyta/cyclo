@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export function WhiteLabelClient({ org }: Props) {
+  const router = useRouter()
   const [name, setName] = useState(org?.name ?? '')
   const [tagline, setTagline] = useState(org?.tagline ?? '')
   const [logoUrl, setLogoUrl] = useState(org?.logo_url ?? '')
@@ -86,21 +88,30 @@ export function WhiteLabelClient({ org }: Props) {
   }
 
   const save = async () => {
+    if (!org?.id) {
+      toast.error('Organização não encontrada. Recarregue a página.')
+      return
+    }
     setSaving(true)
     const supabase = createClient()
     const { error } = await supabase.from('organizations').update({
-      name,
+      name: name || org.name,
       tagline: tagline || null,
       logo_url: logoUrl || null,
       primary_color: primary,
       secondary_color: secondary,
       button_color: button,
-    }).eq('id', org?.id ?? '')
+    }).eq('id', org.id)
 
-    if (error) { toast.error('Erro ao salvar'); setSaving(false); return }
-    toast.success('Configurações salvas! Cores aplicadas na plataforma.')
+    if (error) {
+      toast.error(`Erro ao salvar: ${error.message}`)
+      setSaving(false)
+      return
+    }
+    toast.success('Configurações salvas!')
     setSaving(false)
     setSaved(true)
+    router.refresh()
     setTimeout(() => setSaved(false), 2500)
   }
 
