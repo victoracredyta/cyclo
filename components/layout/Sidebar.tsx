@@ -6,10 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/useUIStore'
 import {
-  LayoutDashboard, Users, Kanban, Calendar,
+  LayoutDashboard, Users, Kanban, Calendar, Mail,
   BarChart2, Target,
   Bot, Zap, DollarSign, Palette, Settings, ChevronLeft,
-  ChevronRight,
+  ChevronRight, Link2,
 } from 'lucide-react'
 
 const navGroups = [
@@ -22,9 +22,10 @@ const navGroups = [
   {
     label: 'Clientes',
     items: [
-      { href: '/crm', label: 'CRM', icon: Users },
+      { href: '/crm', label: 'Clientes Ativos', icon: Users },
       { href: '/pipeline', label: 'Pipeline', icon: Kanban },
       { href: '/agenda', label: 'Agenda', icon: Calendar },
+      { href: '/email', label: 'Enviar Email', icon: Mail },
     ],
   },
   {
@@ -32,7 +33,7 @@ const navGroups = [
     items: [
       { href: '/relatorios', label: 'Relatórios', icon: BarChart2 },
       { href: '/metas', label: 'Metas', icon: Target },
-      { href: '/ia', label: 'CYCLO AI', icon: Bot },
+      { href: '/ia', label: 'CYCLO IA', icon: Bot },
     ],
   },
   {
@@ -46,6 +47,7 @@ const navGroups = [
     label: 'Configurar',
     items: [
       { href: '/whitelabel', label: 'White Label', icon: Palette },
+      { href: '/integracoes', label: 'Integrações', icon: Link2 },
       { href: '/configuracoes', label: 'Configurações', icon: Settings },
     ],
   },

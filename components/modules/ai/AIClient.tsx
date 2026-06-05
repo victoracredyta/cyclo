@@ -168,7 +168,7 @@ export function AIClient() {
         })
       }
     } catch {
-      toast.error('Erro ao conectar com o CYCLO AI')
+      toast.error('Erro ao conectar com o CYCLO IA')
       setMessages(prev => prev.slice(0, -1))
     } finally {
       setStreaming(false)
@@ -193,8 +193,8 @@ export function AIClient() {
             <Sparkles className="w-4.5 h-4.5 text-white" />
           </div>
           <div>
-            <h2 className="text-base font-bold leading-none">CYCLO AI</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Assistente estratégico · claude-sonnet-4-6</p>
+            <h2 className="text-base font-bold leading-none">CYCLO IA</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Assistente estratégico · Configure sua chave em Integrações</p>
           </div>
         </div>
         {messages.length > 0 && (

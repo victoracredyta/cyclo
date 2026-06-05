@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   User, Users, Bell, Shield, LogOut, Plus, Mail,
+  Kanban, Trash2, GripVertical, Link2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -48,7 +49,12 @@ interface Props {
 
 export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) {
   const router = useRouter()
-  const [tab, setTab] = useState<'perfil' | 'equipe' | 'notificacoes' | 'seguranca'>('perfil')
+  const [tab, setTab] = useState<'perfil' | 'equipe' | 'pipeline' | 'notificacoes' | 'seguranca'>('perfil')
+  const [pipelineStages, setPipelineStages] = useState<Array<{id:string;name:string;color:string;order_index:number}>>([])
+  const [newStageName, setNewStageName] = useState('')
+  const [newStageColor, setNewStageColor] = useState('#5B8CFF')
+  const [loadingStages, setLoadingStages] = useState(false)
+  const [stagesLoaded, setStagesLoaded] = useState(false)
   const [orgUsers, setOrgUsers] = useState(initialUsers)
   const [inviteOpen, setInviteOpen] = useState(false)
 
@@ -99,6 +105,42 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     toast.success(!current ? 'Usuário ativado' : 'Usuário desativado')
   }
 
+  const loadStages = async () => {
+    if (stagesLoaded) return
+    setLoadingStages(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('pipeline_stages').select('*').order('order_index')
+    setPipelineStages(data ?? [])
+    setStagesLoaded(true)
+    setLoadingStages(false)
+  }
+
+  const addStage = async () => {
+    if (!newStageName.trim()) return
+    const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    if (!me?.organization_id) return
+    const nextOrder = pipelineStages.length > 0 ? Math.max(...pipelineStages.map(s => s.order_index)) + 1 : 0
+    const { data, error } = await supabase.from('pipeline_stages').insert({
+      organization_id: me.organization_id,
+      name: newStageName.trim(),
+      color: newStageColor,
+      order_index: nextOrder,
+    }).select().single()
+    if (error) { toast.error('Erro ao criar etapa'); return }
+    setPipelineStages(prev => [...prev, data as typeof pipelineStages[0]])
+    setNewStageName('')
+    toast.success('Etapa criada!')
+  }
+
+  const deleteStage = async (id: string) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('pipeline_stages').delete().eq('id', id)
+    if (error) { toast.error('Erro ao remover etapa'); return }
+    setPipelineStages(prev => prev.filter(s => s.id !== id))
+    toast.success('Etapa removida')
+  }
+
   const signOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -119,12 +161,13 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
         {([
           { value: 'perfil' as const, label: 'Perfil', Icon: User },
           { value: 'equipe' as const, label: 'Equipe', Icon: Users },
+          { value: 'pipeline' as const, label: 'Pipeline', Icon: Kanban, onSelect: loadStages },
           { value: 'notificacoes' as const, label: 'Notificações', Icon: Bell },
           { value: 'seguranca' as const, label: 'Segurança', Icon: Shield },
-        ]).map(({ value, label, Icon }) => (
+        ]).map(({ value, label, Icon, onSelect }) => (
           <button
             key={value}
-            onClick={() => setTab(value)}
+            onClick={() => { setTab(value); onSelect?.() }}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors',
               tab === value ? 'border-[#5B8CFF] text-[#5B8CFF]' : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -280,6 +323,93 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
               </div>
             </DialogContent>
           </Dialog>
+        </div>
+      )}
+
+      {/* Tab: Pipeline */}
+      {tab === 'pipeline' && (
+        <div className="max-w-lg space-y-6">
+          <div className="flex items-start gap-3 p-4 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-xl">
+            <Kanban className="w-5 h-5 text-[#5B8CFF] mt-0.5 shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              Gerencie as etapas do funil de vendas. As alterações refletem imediatamente no Pipeline de todos os vendedores da organização.
+            </p>
+          </div>
+
+          {/* Existing stages */}
+          <Card className="border-border shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">Etapas do funil</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loadingStages ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">Carregando...</div>
+              ) : pipelineStages.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">Nenhuma etapa encontrada.</div>
+              ) : (
+                pipelineStages.map((stage, i) => (
+                  <div key={stage.id} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
+                    <GripVertical className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: stage.color }} />
+                    <span className="flex-1 text-sm font-medium">{stage.name}</span>
+                    <Badge className="text-[10px] bg-muted border-0 text-muted-foreground">{i + 1}ª etapa</Badge>
+                    <button
+                      onClick={() => deleteStage(stage.id)}
+                      className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors rounded"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Add new stage */}
+          <Card className="border-border shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">Adicionar nova etapa</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Nome da etapa</Label>
+                <Input
+                  value={newStageName}
+                  onChange={e => setNewStageName(e.target.value)}
+                  placeholder="Ex: Qualificação, Proposta enviada..."
+                  className="h-9 text-sm"
+                  onKeyDown={e => e.key === 'Enter' && addStage()}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Cor</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {['#5B8CFF','#12B981','#F59E0B','#8B5CF6','#e1493c','#06B6D4','#F97316','#EC4899'].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setNewStageColor(c)}
+                      className={cn('w-7 h-7 rounded-full border-2 transition-all', newStageColor === c ? 'border-foreground scale-110' : 'border-transparent')}
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <Button
+                onClick={addStage}
+                disabled={!newStageName.trim()}
+                className="w-full bg-[#5B8CFF] hover:bg-[#4a7aee] text-white text-sm gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar etapa
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="p-3 bg-muted/40 rounded-xl">
+            <p className="text-xs text-muted-foreground flex items-center gap-2">
+              <Link2 className="w-3.5 h-3.5 shrink-0" />
+              Para integrar com email e WhatsApp, acesse <strong>Integrações</strong> no menu lateral.
+            </p>
+          </div>
         </div>
       )}
 

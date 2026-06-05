@@ -126,6 +126,60 @@ export function RelatoriosClient({ clients, leads, contentItems, approvals, auto
     return ranges
   }, [clients])
 
+  const exportPDF = () => {
+    const w = window.open('', '_blank')!
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório CYCLO — ${new Date().toLocaleDateString('pt-BR')}</title>
+    <style>body{font-family:Arial,sans-serif;padding:40px;color:#111;max-width:900px;margin:0 auto}h1{color:#5B8CFF;border-bottom:2px solid #5B8CFF;padding-bottom:8px}h2{color:#333;margin-top:32px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#5B8CFF;color:white;padding:8px 12px;text-align:left;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #eee;font-size:13px}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:16px 0}.kpi{background:#f8f9ff;border:1px solid #e8eeff;border-radius:8px;padding:16px}.kpi-value{font-size:24px;font-weight:bold;color:#5B8CFF}.kpi-label{font-size:11px;color:#666;margin-top:4px}@media print{body{padding:20px}}</style></head><body>
+    <h1>Relatório CYCLO — ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</h1>
+    <p style="color:#666;font-size:13px">Período: ${period === '7d' ? '7 dias' : period === '30d' ? '30 dias' : period === '90d' ? '90 dias' : 'Todo o período'}</p>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-value">R$ ${mrr.toLocaleString('pt-BR')}</div><div class="kpi-label">MRR Total</div></div>
+      <div class="kpi"><div class="kpi-value">${activeClients}</div><div class="kpi-label">Clientes Ativos</div></div>
+      <div class="kpi"><div class="kpi-value">${conversionRate}%</div><div class="kpi-label">Conversão de Leads</div></div>
+      <div class="kpi"><div class="kpi-value">R$ ${wonRevenue.toLocaleString('pt-BR')}</div><div class="kpi-label">Receita Fechada</div></div>
+    </div>
+    <h2>Clientes</h2>
+    <table><tr><th>Nome</th><th>Status</th><th>MRR</th><th>Health Score</th></tr>
+    ${clients.map(c => `<tr><td>${c.name}</td><td>${c.status}</td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td><td>${c.health_score}%</td></tr>`).join('')}
+    </table>
+    <h2>Pipeline</h2>
+    <table><tr><th>Lead</th><th>Valor</th><th>Status</th></tr>
+    ${leads.map(l => `<tr><td>${l.id}</td><td>R$ ${(l.value ?? 0).toLocaleString('pt-BR')}</td><td>${l.won_at ? 'Ganho' : l.lost_at ? 'Perdido' : 'Em andamento'}</td></tr>`).join('')}
+    </table>
+    <p style="margin-top:40px;font-size:11px;color:#999;text-align:center">Gerado pelo CYCLO — ${new Date().toLocaleString('pt-BR')}</p>
+    </body></html>`)
+    w.document.close()
+    w.focus()
+    setTimeout(() => { w.print(); w.close() }, 500)
+  }
+
+  const exportHTML = () => {
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relatório CYCLO</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f6fb;color:#111;padding:32px}h1{font-size:28px;font-weight:700;color:#5B8CFF;margin-bottom:4px}p.sub{color:#666;font-size:14px;margin-bottom:24px}.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}.kpi{background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}.kpi-value{font-size:28px;font-weight:700;color:#5B8CFF}.kpi-label{font-size:12px;color:#666;margin-top:6px}.section{background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:24px}h2{font-size:16px;font-weight:600;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #eee}table{width:100%;border-collapse:collapse}th{background:#f4f6fb;padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}.green{background:#d1fae5;color:#065f46}.red{background:#fee2e2;color:#991b1b}.yellow{background:#fef3c7;color:#92400e}.gray{background:#f3f4f6;color:#374151}footer{text-align:center;font-size:11px;color:#999;margin-top:32px}</style></head><body>
+    <h1>Relatório de Performance</h1>
+    <p class="sub">Agência · ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · Período: ${period === '7d' ? '7 dias' : period === '30d' ? '30 dias' : period === '90d' ? '90 dias' : 'Completo'}</p>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-value">R$ ${mrr.toLocaleString('pt-BR')}</div><div class="kpi-label">MRR Total</div></div>
+      <div class="kpi"><div class="kpi-value">${activeClients}</div><div class="kpi-label">Clientes Ativos</div></div>
+      <div class="kpi"><div class="kpi-value">${conversionRate}%</div><div class="kpi-label">Taxa de Conversão</div></div>
+      <div class="kpi"><div class="kpi-value">R$ ${wonRevenue.toLocaleString('pt-BR')}</div><div class="kpi-label">Receita Fechada</div></div>
+      <div class="kpi"><div class="kpi-value">${riskClients}</div><div class="kpi-label">Clientes em Risco</div></div>
+      <div class="kpi"><div class="kpi-value">${totalRuns}</div><div class="kpi-label">Execuções Automação</div></div>
+    </div>
+    <div class="section"><h2>Clientes</h2>
+    <table><tr><th>Nome</th><th>Status</th><th>MRR</th><th>Health Score</th></tr>
+    ${clients.map(c => {
+      const badgeClass = c.status === 'Ativo' ? 'green' : c.status === 'Em risco' ? 'red' : 'gray'
+      return `<tr><td>${c.name}</td><td><span class="badge ${badgeClass}">${c.status}</span></td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td><td>${c.health_score}%</td></tr>`
+    }).join('')}</table></div>
+    <footer>Gerado pelo CYCLO · ${new Date().toLocaleString('pt-BR')}</footer></body></html>`
+
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+    a.download = `relatorio-cyclo-${new Date().toISOString().slice(0, 10)}.html`
+    a.click()
+  }
+
   const exportCSV = () => {
     const rows = [
       ['Métrica', 'Valor'],
@@ -183,7 +237,13 @@ export function RelatoriosClient({ clients, leads, contentItems, approvals, auto
             ))}
           </div>
           <Button size="sm" variant="outline" onClick={exportCSV} className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> Exportar CSV
+            <Download className="w-3.5 h-3.5" /> CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportHTML} className="gap-1.5 text-xs">
+            <Download className="w-3.5 h-3.5" /> HTML
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportPDF} className="gap-1.5 text-xs">
+            <Download className="w-3.5 h-3.5" /> PDF
           </Button>
         </div>
       </div>

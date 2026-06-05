@@ -43,10 +43,63 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 const EXAMPLE_AUTOMATIONS = [
-  { name: 'Boas-vindas para novo lead', trigger_type: 'novo_lead', action_type: 'enviar_email' },
-  { name: 'Alerta de cliente em risco', trigger_type: 'cliente_em_risco', action_type: 'notificar_equipe' },
-  { name: 'Lembrete de aprovação', trigger_type: 'aprovacao_pendente', action_type: 'enviar_whatsapp' },
+  {
+    name: 'Boas-vindas ao novo lead',
+    trigger_type: 'novo_lead',
+    action_type: 'enviar_email',
+    desc: 'Lead criado → Email automático de boas-vindas',
+  },
+  {
+    name: 'Parabéns pela decisão — novo cliente',
+    trigger_type: 'novo_contrato',
+    action_type: 'enviar_whatsapp',
+    desc: 'Contrato fechado → WhatsApp de parabéns',
+  },
+  {
+    name: 'Lembrete: clientes para ligar hoje',
+    trigger_type: 'lead_mudou_etapa',
+    action_type: 'criar_tarefa',
+    desc: 'Lead em nova etapa → Cria tarefa de follow-up',
+  },
+  {
+    name: 'Follow-up de proposta enviada',
+    trigger_type: 'prazo_proximo',
+    action_type: 'enviar_whatsapp',
+    desc: 'Prazo chegando → WhatsApp de follow-up',
+  },
+  {
+    name: 'Alerta de cliente em risco',
+    trigger_type: 'cliente_em_risco',
+    action_type: 'notificar_equipe',
+    desc: 'Health score baixo → Notifica equipe interna',
+  },
+  {
+    name: 'Lembrete de aprovação pendente',
+    trigger_type: 'aprovacao_pendente',
+    action_type: 'enviar_whatsapp',
+    desc: 'Aprovação aguardando → WhatsApp para o cliente',
+  },
+  {
+    name: 'Parabéns de aniversário',
+    trigger_type: 'aniversario_cliente',
+    action_type: 'enviar_whatsapp',
+    desc: 'Aniversário do cliente → Mensagem personalizada',
+  },
+  {
+    name: 'Confirmação de pagamento recebido',
+    trigger_type: 'pagamento_recebido',
+    action_type: 'notificar_equipe',
+    desc: 'Pagamento confirmado → Notifica financeiro',
+  },
 ]
+
+const DEFAULT_MESSAGES: Record<string, string> = {
+  'novo_lead|enviar_email': `Olá {nome}!\n\nFicamos muito felizes em receber seu contato. Nossa equipe já está analisando suas necessidades e em breve entraremos em contato.\n\nQualquer dúvida, estamos à disposição!\n\nAtenciosamente,\n{agencia}`,
+  'novo_contrato|enviar_whatsapp': `🎉 Parabéns pela excelente decisão, {nome}!\n\nÉ um prazer tê-lo(a) como cliente. Nossa equipe já está se preparando para entregar os melhores resultados para sua empresa.\n\nVamos juntos! 🚀\n\n{agencia}`,
+  'aniversario_cliente|enviar_whatsapp': `🎂 Feliz aniversário, {nome}!\n\nEm nome de toda a equipe {agencia}, desejamos um dia incrível repleto de realizações.\n\nMuito obrigado por confiar no nosso trabalho! 🙏`,
+  'prazo_proximo|enviar_whatsapp': `Olá {nome}! 👋\n\nPassando para dar um olá e ver se ficou alguma dúvida sobre a proposta que enviamos.\n\nEstamos à disposição para uma conversa rápida. Quando for bom para você?`,
+  'aprovacao_pendente|enviar_whatsapp': `Olá {nome}!\n\nTemos um conteúdo aguardando sua aprovação. 📋\n\nAcesse o portal para visualizar e aprovar: {link}\n\nQualquer ajuste é só nos dizer!`,
+}
 
 function timeAgo(date: string | null) {
   if (!date) return 'Nunca'
@@ -76,11 +129,14 @@ export function AutomacoesClient({ automations: initial }: AutomacoesClientProps
     toast.success(next === 'ativo' ? 'Automação ativada' : 'Automação pausada')
   }
 
-  const createExample = async (example: typeof EXAMPLE_AUTOMATIONS[0]) => {
+  const createExample = async (example: (typeof EXAMPLE_AUTOMATIONS)[0]) => {
     setCreating(true)
     const supabase = createClient()
     const { data: me } = await supabase.from('users').select('organization_id').single()
     if (!me?.organization_id) { setCreating(false); return }
+
+    const msgKey = `${example.trigger_type}|${example.action_type}`
+    const defaultMsg = DEFAULT_MESSAGES[msgKey] ?? ''
 
     const { data, error } = await supabase.from('automations').insert({
       organization_id: me.organization_id,
@@ -88,6 +144,7 @@ export function AutomacoesClient({ automations: initial }: AutomacoesClientProps
       trigger_type: example.trigger_type,
       action_type: example.action_type,
       status: 'pausado',
+      config: { message: defaultMsg },
     }).select().single()
 
     if (error) { toast.error('Erro ao criar'); setCreating(false); return }
@@ -149,13 +206,9 @@ export function AutomacoesClient({ automations: initial }: AutomacoesClientProps
                 </div>
                 <div className="flex-1">
                   <p className="font-medium text-sm">{ex.name}</p>
-                  <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-                    <span>{TRIGGER_LABELS[ex.trigger_type] ?? ex.trigger_type}</span>
-                    <ArrowRight className="w-3 h-3" />
-                    <span>{ACTION_LABELS[ex.action_type] ?? ex.action_type}</span>
-                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{ex.desc}</p>
                 </div>
-                <Badge className="text-[10px] bg-[#5B8CFF]/10 text-[#5B8CFF] border-0 group-hover:bg-[#5B8CFF] group-hover:text-white transition-colors">
+                <Badge className="text-[10px] bg-[#5B8CFF]/10 text-[#5B8CFF] border-0 group-hover:bg-[#5B8CFF] group-hover:text-white transition-colors shrink-0">
                   + Adicionar
                 </Badge>
               </button>

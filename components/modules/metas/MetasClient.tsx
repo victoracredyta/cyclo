@@ -39,9 +39,23 @@ const UNITS = [
   { value: 'R$', label: 'R$ (Reais)' },
   { value: 'clientes', label: 'Clientes' },
   { value: 'leads', label: 'Leads' },
-  { value: 'posts', label: 'Posts' },
+  { value: 'ligações', label: 'Ligações' },
+  { value: 'emails', label: 'Emails enviados' },
+  { value: 'prospects', label: 'Novos prospects' },
+  { value: 'posts', label: 'Posts publicados' },
   { value: '%', label: '% (Porcentagem)' },
-  { value: 'horas', label: 'Horas' },
+  { value: 'reuniões', label: 'Reuniões realizadas' },
+  { value: 'contratos', label: 'Contratos fechados' },
+]
+
+const CATEGORIES = [
+  { value: 'vendas', label: '💰 Vendas', defaultUnit: 'R$' },
+  { value: 'leads', label: '🎯 Geração de Leads', defaultUnit: 'leads' },
+  { value: 'ligacoes', label: '📞 Ligações', defaultUnit: 'ligações' },
+  { value: 'email', label: '📧 Email Marketing', defaultUnit: 'emails' },
+  { value: 'prospects', label: '🔍 Prospecção', defaultUnit: 'prospects' },
+  { value: 'retencao', label: '🤝 Retenção', defaultUnit: 'clientes' },
+  { value: 'personalizado', label: '⚙️ Personalizado', defaultUnit: 'R$' },
 ]
 
 interface Props {
@@ -251,6 +265,26 @@ export function MetasClient({ goals: initial, users }: Props) {
             <DialogTitle>{editingId ? 'Editar meta' : 'Nova meta'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+            {/* Category */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Categoria</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => {
+                      setValue('unit', cat.defaultUnit)
+                      setValue('label', `${cat.label.split(' ').slice(1).join(' ')} — `)
+                    }}
+                    className="text-left text-xs px-2.5 py-1.5 rounded-lg border border-border hover:border-[#5B8CFF]/50 hover:bg-[#5B8CFF]/5 transition-colors"
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Nome da meta *</Label>
               <Input {...register('label')} placeholder="Ex: Novos clientes no mês" className="h-9 text-sm" />

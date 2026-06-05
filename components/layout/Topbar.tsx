@@ -20,21 +20,17 @@ import { useRouter } from 'next/navigation'
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
-  '/crm': 'CRM — Clientes',
+  '/crm': 'Clientes Ativos',
   '/pipeline': 'Pipeline de Vendas',
   '/agenda': 'Agenda',
-  '/planner': 'Planner de Conteúdo',
-  '/aprovacoes': 'Aprovações',
-  '/campanhas': 'Campanhas de Email',
-  '/landingpages': 'Landing Pages',
-  '/pesquisa': 'Pesquisa de Mercado',
+  '/email': 'Enviar Email',
   '/relatorios': 'Relatórios',
   '/metas': 'Metas',
-  '/ia': 'CYCLO AI',
-  '/atendimento': 'Atendimento',
+  '/ia': 'CYCLO IA',
   '/automacoes': 'Automações',
   '/financeiro': 'Financeiro',
   '/whitelabel': 'White Label',
+  '/integracoes': 'Integrações',
   '/configuracoes': 'Configurações',
 }
 
