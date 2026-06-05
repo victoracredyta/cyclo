@@ -6,10 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/useUIStore'
 import {
-  LayoutDashboard, Users, Kanban, Calendar, FileText,
-  CheckSquare, Mail, Globe, BarChart2, Target, MessageCircle,
+  LayoutDashboard, Users, Kanban, Calendar,
+  BarChart2, Target,
   Bot, Zap, DollarSign, Palette, Settings, ChevronLeft,
-  ChevronRight, TrendingUp, Search,
+  ChevronRight,
 } from 'lucide-react'
 
 const navGroups = [
@@ -28,21 +28,6 @@ const navGroups = [
     ],
   },
   {
-    label: 'Conteúdo',
-    items: [
-      { href: '/planner', label: 'Planner', icon: FileText },
-      { href: '/aprovacoes', label: 'Aprovações', icon: CheckSquare },
-    ],
-  },
-  {
-    label: 'Crescimento',
-    items: [
-      { href: '/campanhas', label: 'Campanhas', icon: Mail },
-      { href: '/landingpages', label: 'Landing Pages', icon: Globe },
-      { href: '/pesquisa', label: 'Pesquisa de Mercado', icon: Search },
-    ],
-  },
-  {
     label: 'Inteligência',
     items: [
       { href: '/relatorios', label: 'Relatórios', icon: BarChart2 },
@@ -53,7 +38,6 @@ const navGroups = [
   {
     label: 'Operações',
     items: [
-      { href: '/atendimento', label: 'Atendimento', icon: MessageCircle },
       { href: '/automacoes', label: 'Automações', icon: Zap },
       { href: '/financeiro', label: 'Financeiro', icon: DollarSign },
     ],
