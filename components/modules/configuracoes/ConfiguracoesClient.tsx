@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -18,6 +18,7 @@ import {
   User, Users, Bell, Shield, LogOut, Plus, Mail,
   Kanban, Trash2, GripVertical, Link2, Tag, Shuffle,
   Building2, Edit3, Check, X, ChevronDown, ChevronRight, RotateCcw,
+  Camera, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -76,6 +77,7 @@ interface Funnel {
   responsible_id: string
   user_ids: string[]
   description: string
+  stage_ids: string[]
 }
 
 interface LeadTag {
@@ -131,7 +133,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [showNewFunnel, setShowNewFunnel] = useState(false)
   const [editingFunnel, setEditingFunnel] = useState<Funnel | null>(null)
   const [newFunnel, setNewFunnel] = useState<Omit<Funnel, 'id'>>({
-    name: '', type: 'Vendas', visibility: 'publico', responsible_id: '', user_ids: [], description: '',
+    name: '', type: 'Vendas', visibility: 'publico', responsible_id: '', user_ids: [], description: '', stage_ids: [],
   })
 
   // --- Tags ---
@@ -156,12 +158,15 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [inviteEmail, setInviteEmail] = useState('')
   const [invitePermission, setInvitePermission] = useState('Social Media')
   const [inviting, setInviting] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(appUser?.avatar_url ?? '')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   // Load from localStorage
   useEffect(() => {
     try {
       const f = localStorage.getItem(LOCAL_FUNNELS_KEY)
-      if (f) setFunnels(JSON.parse(f))
+      if (f) setFunnels((JSON.parse(f) as Funnel[]).map(fn => ({ ...fn, stage_ids: fn.stage_ids ?? [] })))
       const t = localStorage.getItem(LOCAL_TAGS_KEY)
       if (t) setTags(JSON.parse(t))
       const s = localStorage.getItem(LOCAL_SEGMENTS_KEY)
@@ -242,9 +247,34 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     if (!newFunnel.name.trim()) return
     const created: Funnel = { ...newFunnel, id: crypto.randomUUID() }
     saveFunnels([...funnels, created])
-    setNewFunnel({ name: '', type: 'Vendas', visibility: 'publico', responsible_id: '', user_ids: [], description: '' })
+    setNewFunnel({ name: '', type: 'Vendas', visibility: 'publico', responsible_id: '', user_ids: [], description: '', stage_ids: [] })
     setShowNewFunnel(false)
     toast.success(`Funil "${created.name}" criado!`)
+  }
+
+  const uploadAvatar = async (file: File) => {
+    if (!appUser?.id) return
+    setUploadingAvatar(true)
+    const supabase = createClient()
+    const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+    const fileName = `${appUser.id}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file, { upsert: true, contentType: file.type })
+    if (uploadError) {
+      toast.error(`Erro ao enviar foto: ${uploadError.message}`)
+      setUploadingAvatar(false)
+      return
+    }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+    const urlWithTs = `${publicUrl}?t=${Date.now()}`
+    const { error: updateError } = await supabase.from('users').update({ avatar_url: urlWithTs }).eq('id', appUser.id)
+    if (updateError) {
+      toast.error('Erro ao salvar foto no perfil')
+    } else {
+      setAvatarUrl(urlWithTs)
+      toast.success('Foto de perfil atualizada!')
+      router.refresh()
+    }
+    setUploadingAvatar(false)
   }
 
   const deleteFunnel = (id: string) => {
@@ -344,14 +374,35 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-4">
-                <Avatar className="h-14 w-14">
-                  <AvatarFallback className="text-white text-lg font-bold" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
-                    {(fullName || appUser?.email || 'U').charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <div
+                  className="relative group cursor-pointer shrink-0"
+                  onClick={() => avatarInputRef.current?.click()}
+                  title="Clique para alterar foto"
+                >
+                  <Avatar className="h-16 w-16">
+                    <AvatarImage src={avatarUrl || undefined} />
+                    <AvatarFallback className="text-white text-xl font-bold" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                      {(fullName || appUser?.email || 'U').charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    {uploadingAvatar
+                      ? <Loader2 className="w-5 h-5 text-white animate-spin" />
+                      : <Camera className="w-5 h-5 text-white" />
+                    }
+                  </div>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadAvatar(f) }}
+                  />
+                </div>
                 <div>
                   <p className="font-semibold text-sm">{fullName || 'Seu nome'}</p>
                   <p className="text-xs text-muted-foreground">{appUser?.email}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Clique na foto para alterar</p>
                   <Badge className="text-[10px] mt-1 border-0" style={{ backgroundColor: `${PERMISSION_CONFIG[appUser?.permission ?? '']?.color ?? '#6B7280'}15`, color: PERMISSION_CONFIG[appUser?.permission ?? '']?.color ?? '#6B7280' }}>
                     {appUser?.permission ?? 'Usuário'}
                   </Badge>
@@ -632,6 +683,28 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                             >
                               {sel && <Check className="w-3 h-3" />}
                               {u.full_name ?? u.email}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {stagesLoaded && pipelineStages.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">Etapas deste funil</Label>
+                      <p className="text-[10px] text-muted-foreground -mt-1">Selecione quais etapas pertencem a este funil. Se nenhuma for selecionada, o funil exibirá todas.</p>
+                      <div className="flex flex-wrap gap-2">
+                        {pipelineStages.map(s => {
+                          const sel = newFunnel.stage_ids.includes(s.id)
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setNewFunnel(p => ({ ...p, stage_ids: sel ? p.stage_ids.filter(id => id !== s.id) : [...p.stage_ids, s.id] }))}
+                              className={cn('flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition-all', sel ? 'border-transparent text-white' : 'border-border text-muted-foreground hover:border-muted-foreground/50')}
+                              style={sel ? { background: s.color } : {}}
+                            >
+                              {sel && <Check className="w-3 h-3" />}
+                              {s.name}
                             </button>
                           )
                         })}

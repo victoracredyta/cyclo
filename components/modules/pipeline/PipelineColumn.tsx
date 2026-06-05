@@ -4,7 +4,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
-import { LeadCard } from './LeadCard'
+import { LeadCard, type LeadTag } from './LeadCard'
 import { cn } from '@/lib/utils'
 import type { PipelineStage, Lead } from '@/types/database'
 
@@ -16,9 +16,11 @@ interface PipelineColumnProps {
   stage: PipelineStage
   leads: LeadWithResponsible[]
   onAddLead: () => void
+  availableTags?: LeadTag[]
+  onTagChange?: (leadId: string, tagName: string | null) => void
 }
 
-export function PipelineColumn({ stage, leads, onAddLead }: PipelineColumnProps) {
+export function PipelineColumn({ stage, leads, onAddLead, availableTags = [], onTagChange }: PipelineColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id })
   const totalValue = leads.reduce((s, l) => s + (l.value ?? 0), 0)
 
@@ -51,7 +53,7 @@ export function PipelineColumn({ stage, leads, onAddLead }: PipelineColumnProps)
       >
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.map(lead => (
-            <LeadCard key={lead.id} lead={lead} />
+            <LeadCard key={lead.id} lead={lead} availableTags={availableTags} onTagChange={onTagChange} />
           ))}
         </SortableContext>
 

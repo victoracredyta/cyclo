@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -15,15 +15,24 @@ import { Badge } from '@/components/ui/badge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Search, Filter, X, Users, CalendarDays, Settings } from 'lucide-react'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Plus, Search, Filter, X, Users, CalendarDays, Settings, Kanban, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { PipelineColumn } from './PipelineColumn'
-import { LeadCard } from './LeadCard'
+import { LeadCard, type LeadTag } from './LeadCard'
 import { NewLeadModal } from './NewLeadModal'
 import type { PipelineStage, Lead } from '@/types/database'
 import Link from 'next/link'
+
+const LOCAL_TAGS_KEY = 'cyclo_lead_tags'
+const LOCAL_FUNNELS_KEY = 'cyclo_funnels'
+
+type LocalFunnel = { id: string; name: string; type: string; stage_ids?: string[] }
 
 export type LeadWithResponsible = Lead & {
   responsible: { id: string; full_name: string | null; avatar_url: string | null } | null
@@ -71,9 +80,64 @@ export function PipelineBoard({ initialStages, initialLeads, users }: PipelineBo
   const [filterTemp, setFilterTemp] = useState('all')
   const [filterOrigin, setFilterOrigin] = useState('all')
 
+  // Funnels & tags (from localStorage)
+  const [availableTags, setAvailableTags] = useState<LeadTag[]>([])
+  const [funnels, setFunnels] = useState<LocalFunnel[]>([])
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string>('all')
+  const [showFunnelDropdown, setShowFunnelDropdown] = useState(false)
+  const [showCreateFunnel, setShowCreateFunnel] = useState(false)
+  const [newFunnelName, setNewFunnelName] = useState('')
+  const [newFunnelType, setNewFunnelType] = useState('Vendas')
+  const [newFunnelStageIds, setNewFunnelStageIds] = useState<string[]>([])
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
+
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem(LOCAL_TAGS_KEY)
+      if (t) setAvailableTags(JSON.parse(t))
+      const f = localStorage.getItem(LOCAL_FUNNELS_KEY)
+      if (f) setFunnels(JSON.parse(f))
+    } catch {}
+  }, [])
+
+  const visibleStages = useMemo(() => {
+    if (selectedFunnelId === 'all') return stages
+    const funnel = funnels.find(f => f.id === selectedFunnelId)
+    if (!funnel?.stage_ids?.length) return stages
+    return stages.filter(s => funnel.stage_ids!.includes(s.id))
+  }, [stages, selectedFunnelId, funnels])
+
+  const handleTagChange = useCallback(async (leadId: string, tagName: string | null) => {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tag: tagName } : l))
+    const supabase = createClient()
+    const { error } = await supabase.from('leads').update({ tag: tagName }).eq('id', leadId)
+    if (error) {
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tag: leads.find(x => x.id === leadId)?.tag ?? null } : l))
+      toast.error('Erro ao salvar tag')
+    }
+  }, [leads])
+
+  const createFunnelInline = () => {
+    if (!newFunnelName.trim()) return
+    const newFunnel: LocalFunnel = {
+      id: crypto.randomUUID(),
+      name: newFunnelName.trim(),
+      type: newFunnelType,
+      stage_ids: newFunnelStageIds,
+    }
+    const updated = [...funnels, newFunnel]
+    setFunnels(updated)
+    localStorage.setItem(LOCAL_FUNNELS_KEY, JSON.stringify(updated))
+    setSelectedFunnelId(newFunnel.id)
+    setNewFunnelName('')
+    setNewFunnelType('Vendas')
+    setNewFunnelStageIds([])
+    setShowCreateFunnel(false)
+    toast.success(`Funil "${newFunnel.name}" criado!`)
+  }
 
   const activeFiltersCount = [
     filterSeller !== 'all', filterPeriod !== 'all',
@@ -105,12 +169,12 @@ export function PipelineBoard({ initialStages, initialLeads, users }: PipelineBo
 
   const leadsByStage = useMemo(() => {
     const map: Record<string, LeadWithResponsible[]> = {}
-    stages.forEach(s => { map[s.id] = [] })
+    visibleStages.forEach(s => { map[s.id] = [] })
     filteredLeads.forEach(l => {
       if (l.stage_id && map[l.stage_id]) map[l.stage_id].push(l)
     })
     return map
-  }, [filteredLeads, stages])
+  }, [filteredLeads, visibleStages])
 
   const totalValue = filteredLeads.reduce((s, l) => s + (l.value ?? 0), 0)
 
@@ -169,7 +233,56 @@ export function PipelineBoard({ initialStages, initialLeads, users }: PipelineBo
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1">
-          <h2 className="text-xl font-bold">Pipeline de Vendas</h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl font-bold">Pipeline de Vendas</h2>
+
+            {/* Funnel selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowFunnelDropdown(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:border-muted-foreground/40 transition-colors"
+              >
+                <Kanban className="w-3.5 h-3.5" />
+                {selectedFunnelId === 'all' ? 'Todos os funis' : funnels.find(f => f.id === selectedFunnelId)?.name ?? 'Funil'}
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showFunnelDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowFunnelDropdown(false)} />
+                  <div className="absolute left-0 top-8 z-50 bg-card border border-border rounded-xl shadow-lg p-1.5 min-w-[200px]">
+                    <button
+                      onClick={() => { setSelectedFunnelId('all'); setShowFunnelDropdown(false) }}
+                      className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === 'all' && 'font-semibold text-[#5B8CFF]')}
+                    >
+                      {selectedFunnelId === 'all' && <Check className="w-3 h-3 text-[#5B8CFF]" />}
+                      {selectedFunnelId !== 'all' && <span className="w-3" />}
+                      Todos os funis
+                    </button>
+                    {funnels.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => { setSelectedFunnelId(f.id); setShowFunnelDropdown(false) }}
+                        className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === f.id && 'font-semibold text-[#5B8CFF]')}
+                      >
+                        {selectedFunnelId === f.id ? <Check className="w-3 h-3 text-[#5B8CFF]" /> : <span className="w-3" />}
+                        {f.name}
+                        {f.type && <span className="ml-auto text-muted-foreground text-[10px]">{f.type}</span>}
+                      </button>
+                    ))}
+                    <div className="border-t border-border mt-1 pt-1">
+                      <button
+                        onClick={() => { setShowFunnelDropdown(false); setShowCreateFunnel(true) }}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left text-[#5B8CFF] hover:bg-[#5B8CFF]/10 transition-colors font-medium"
+                      >
+                        <Plus className="w-3 h-3" /> Criar novo funil
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
             <span>{filteredLeads.length} oportunidades · R$ {totalValue.toLocaleString('pt-BR')}</span>
             {hotCount > 0 && <span className="text-red-500">🔥 {hotCount} quente{hotCount > 1 ? 's' : ''}</span>}
@@ -291,12 +404,14 @@ export function PipelineBoard({ initialStages, initialLeads, users }: PipelineBo
           onDragOver={handleDragOver}
         >
           <div className="flex gap-3 h-full pb-4 min-w-max">
-            {stages.map(stage => (
+            {visibleStages.map(stage => (
               <PipelineColumn
                 key={stage.id}
                 stage={stage}
                 leads={leadsByStage[stage.id] ?? []}
                 onAddLead={() => { setDefaultStageId(stage.id); setShowNewLead(true) }}
+                availableTags={availableTags}
+                onTagChange={handleTagChange}
               />
             ))}
           </div>
@@ -304,7 +419,7 @@ export function PipelineBoard({ initialStages, initialLeads, users }: PipelineBo
           <DragOverlay>
             {activeLead ? (
               <div className="rotate-2 opacity-90">
-                <LeadCard lead={activeLead} isDragging />
+                <LeadCard lead={activeLead} isDragging availableTags={availableTags} />
               </div>
             ) : null}
           </DragOverlay>
@@ -320,6 +435,74 @@ export function PipelineBoard({ initialStages, initialLeads, users }: PipelineBo
           onCreated={handleLeadCreated}
         />
       )}
+
+      {/* Inline funnel creation dialog */}
+      <Dialog open={showCreateFunnel} onOpenChange={setShowCreateFunnel}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Kanban className="w-4 h-4 text-[#5B8CFF]" /> Criar novo funil
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-xs font-semibold">Nome do funil *</Label>
+                <Input
+                  value={newFunnelName}
+                  onChange={e => setNewFunnelName(e.target.value)}
+                  placeholder="Ex: Funil GC, Vendas 2025, Pré-Vendas..."
+                  className="h-9 text-sm"
+                  autoFocus
+                  onKeyDown={e => e.key === 'Enter' && createFunnelInline()}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-xs font-semibold">Tipo</Label>
+                <Select value={newFunnelType} onValueChange={v => { if (v) setNewFunnelType(v) }}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['Vendas', 'Marketing', 'Projetos', 'Prospecção', 'Pré-Vendas', 'Pós-Vendas', 'Administrativo'].map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold">Etapas deste funil</Label>
+              <p className="text-[10px] text-muted-foreground">Selecione quais etapas aparecem neste funil. Se nenhuma, exibe todas.</p>
+              <div className="flex flex-wrap gap-2">
+                {stages.map(s => {
+                  const sel = newFunnelStageIds.includes(s.id)
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setNewFunnelStageIds(prev => sel ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                      className={cn('flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition-all', sel ? 'text-white border-transparent' : 'border-border text-muted-foreground hover:border-muted-foreground/50')}
+                      style={sel ? { background: s.color } : {}}
+                    >
+                      {sel && <Check className="w-2.5 h-2.5" />}
+                      {s.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 text-sm" onClick={() => setShowCreateFunnel(false)}>Cancelar</Button>
+              <Button
+                onClick={createFunnelInline}
+                disabled={!newFunnelName.trim()}
+                className="flex-1 text-white text-sm"
+                style={{ background: 'var(--brand-primary,#5B8CFF)' }}
+              >
+                Criar funil
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

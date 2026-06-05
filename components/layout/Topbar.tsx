@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   Bell, Search, Moon, Sun, ChevronDown,
   LayoutDashboard, Users, Kanban, Bot, Settings,
-  Palette, LogOut, Zap, DollarSign,
+  Palette, LogOut, Zap, DollarSign, User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -120,6 +120,15 @@ export function Topbar({ userName, userEmail, userAvatar, notificationCount = 0 
               <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
             </div>
           </div>
+
+          {/* Perfil */}
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => router.push('/configuracoes')}>
+              <User /> Meu perfil
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
+          <DropdownMenuSeparator />
 
           {/* Navegação rápida */}
           <DropdownMenuGroup>
