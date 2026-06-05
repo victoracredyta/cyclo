@@ -10,7 +10,7 @@ import {
   DollarSign, Users, CheckSquare, TrendingUp, AlertTriangle,
   Bot, Zap, Plus, ArrowRight,
 } from 'lucide-react'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { Goal, Automation } from '@/types/database'
@@ -31,7 +31,6 @@ interface DashboardClientProps {
   pipelineByStage: PipelineStageData[]
   goals: Goal[]
   automations: Automation[]
-  contentByStatus: { producao: number; aguardando: number; aprovado: number; publicado: number }
 }
 
 // Mock MRR trend (last 6 months) — replaced with real data when available
@@ -54,7 +53,7 @@ const aiInsights = [
 export function DashboardClient({
   mrr, activeClientsCount, riskClients, pendingApprovals,
   pipelineValue, openLeadsCount, pipelineByStage,
-  goals, automations, contentByStatus,
+  goals, automations,
 }: DashboardClientProps) {
   const [greeting] = useState(() => {
     const h = new Date().getHours()
@@ -208,7 +207,7 @@ export function DashboardClient({
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Bot className="w-4 h-4 text-[#5B8CFF]" />
-              CYCLO AI Insights
+              CYCLO IA Insights
               <Badge className="text-[9px] bg-[#5B8CFF]/15 text-[#5B8CFF] border-0 ml-auto">LIVE</Badge>
             </CardTitle>
           </CardHeader>
@@ -229,7 +228,7 @@ export function DashboardClient({
       </div>
 
       {/* Bottom widgets */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Pipeline by stage */}
         <Card className="border-border shadow-none">
           <CardHeader className="pb-2">
@@ -256,39 +255,6 @@ export function DashboardClient({
                 </div>
               ))
             )}
-          </CardContent>
-        </Card>
-
-        {/* Content this week */}
-        <Card className="border-border shadow-none">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Posts esta semana</CardTitle>
-              <Link href="/planner" className="text-xs text-[#5B8CFF] hover:underline">Ver planner</Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={110}>
-              <BarChart data={[
-                { name: 'Prod.', value: contentByStatus.producao, fill: '#64748B' },
-                { name: 'Aguard.', value: contentByStatus.aguardando, fill: '#F59E0B' },
-                { name: 'Aprov.', value: contentByStatus.aprovado, fill: '#12B981' },
-                { name: 'Pub.', value: contentByStatus.publicado, fill: '#5B8CFF' },
-              ]} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {[contentByStatus.producao, contentByStatus.aguardando, contentByStatus.aprovado, contentByStatus.publicado].map((_, i) => (
-                    <rect key={i} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-              <span>Total: {Object.values(contentByStatus).reduce((a, b) => a + b, 0)} posts</span>
-              <Link href="/aprovacoes" className="text-[#5B8CFF]">{contentByStatus.aguardando} pendentes</Link>
-            </div>
           </CardContent>
         </Card>
 

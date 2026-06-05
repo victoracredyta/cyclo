@@ -11,7 +11,6 @@ export default async function DashboardPage() {
     { data: stages },
     { data: goals },
     { data: automations },
-    { data: contentThisWeek },
   ] = await Promise.all([
     supabase.from('clients').select('id, name, mrr, health_score, status').order('mrr', { ascending: false }),
     supabase.from('leads').select('id, name, value, stage_id, won_at, lost_at, created_at').is('won_at', null).is('lost_at', null),
@@ -19,7 +18,6 @@ export default async function DashboardPage() {
     supabase.from('pipeline_stages').select('id, name, color, order_index').order('order_index'),
     supabase.from('goals').select('*').eq('period', 'mensal'),
     supabase.from('automations').select('*').eq('status', 'ativo'),
-    supabase.from('content_items').select('id, status').gte('scheduled_date', new Date(Date.now() - 7 * 864e5).toISOString().split('T')[0]),
   ])
 
   const activeClients = clients?.filter(c => c.status === 'Ativo') ?? []
@@ -34,14 +32,6 @@ export default async function DashboardPage() {
     value: leads?.filter(l => l.stage_id === stage.id).reduce((s, l) => s + (l.value ?? 0), 0) ?? 0,
   }))
 
-  // Content breakdown this week
-  const contentByStatus = {
-    producao: contentThisWeek?.filter(c => c.status === 'producao').length ?? 0,
-    aguardando: contentThisWeek?.filter(c => c.status === 'aguardando').length ?? 0,
-    aprovado: contentThisWeek?.filter(c => c.status === 'aprovado').length ?? 0,
-    publicado: contentThisWeek?.filter(c => c.status === 'publicado').length ?? 0,
-  }
-
   return (
     <DashboardClient
       mrr={mrr}
@@ -53,7 +43,6 @@ export default async function DashboardPage() {
       pipelineByStage={pipelineByStage}
       goals={goals ?? []}
       automations={automations ?? []}
-      contentByStatus={contentByStatus}
     />
   )
 }
