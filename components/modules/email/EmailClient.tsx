@@ -10,9 +10,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Mail, Send, Clock, CheckCircle2, AlertCircle, User, Building2,
-  History, ChevronDown, ChevronUp, Paperclip,
+  History, ChevronDown, ChevronUp, Paperclip, Plus, Sparkles,
+  Loader2, Check, X, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -36,28 +38,41 @@ type EmailRecord = {
   contactName: string
 }
 
-const TEMPLATES = [
+type Template = {
+  id: string
+  label: string
+  subject: string
+  body: string
+  isCustom?: boolean
+}
+
+const DEFAULT_TEMPLATES: Template[] = [
   {
+    id: 'proposta',
     label: 'Proposta comercial',
     subject: 'Proposta Comercial — {agencia}',
     body: `Olá {nome},\n\nConforme conversamos, segue em anexo nossa proposta comercial detalhada.\n\nEstamos à disposição para apresentar pessoalmente e esclarecer quaisquer dúvidas.\n\nAtenciosamente,\n{remetente}`,
   },
   {
+    id: 'followup',
     label: 'Follow-up de reunião',
     subject: 'Follow-up da nossa reunião',
     body: `Olá {nome},\n\nFoi um prazer conversar com você hoje.\n\nConforme combinado, vou encaminhar os próximos passos:\n\n1. [Ação 1]\n2. [Ação 2]\n\nQualquer dúvida, estou à disposição.\n\nAtenciosamente,\n{remetente}`,
   },
   {
+    id: 'boasvindas',
     label: 'Boas-vindas ao cliente',
     subject: 'Bem-vindo(a) à {agencia}! 🎉',
     body: `Olá {nome},\n\nParabéns pela sua decisão! Estamos muito felizes em tê-lo(a) como cliente.\n\nNosso time já está se preparando para começar. Em breve entraremos em contato para alinhar os primeiros passos.\n\nSeja muito bem-vindo(a)!\n\n{remetente}\n{agencia}`,
   },
   {
+    id: 'cobranca',
     label: 'Cobrança amigável',
     subject: 'Lembrete: Fatura em aberto',
     body: `Olá {nome},\n\nGostaríamos de lembrá-lo(a) que temos uma fatura em aberto no valor de R$ [valor].\n\nCaso já tenha efetuado o pagamento, por favor desconsidere este e-mail.\n\nEm caso de dúvidas, estamos à disposição.\n\nAtenciosamente,\n{remetente}`,
   },
   {
+    id: 'relatorio',
     label: 'Relatório mensal',
     subject: 'Relatório de Performance — {mes}',
     body: `Olá {nome},\n\nSegue o relatório de performance do mês de {mes}.\n\n📊 Resumo:\n- [Métrica 1]: [valor]\n- [Métrica 2]: [valor]\n- [Métrica 3]: [valor]\n\nEstamos à disposição para agendar uma call de alinhamento.\n\nAtenciosamente,\n{remetente}`,
@@ -73,6 +88,20 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
   const [history, setHistory] = useState<EmailRecord[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState('')
+  const [customTemplates, setCustomTemplates] = useState<Template[]>([])
+
+  // New template modal
+  const [showNewTemplate, setShowNewTemplate] = useState(false)
+  const [newTplLabel, setNewTplLabel] = useState('')
+  const [newTplSubject, setNewTplSubject] = useState('')
+  const [newTplBody, setNewTplBody] = useState('')
+
+  // AI improve
+  const [aiImproving, setAiImproving] = useState(false)
+  const [aiImproveOpen, setAiImproveOpen] = useState(false)
+  const [aiImprovedText, setAiImprovedText] = useState('')
+
+  const allTemplates = [...DEFAULT_TEMPLATES, ...customTemplates]
 
   const allContacts: Contact[] = [
     ...clients.map(c => ({ ...c, type: 'cliente' as const })),
@@ -87,8 +116,8 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
     setToName(contact.name)
   }
 
-  const applyTemplate = (label: string) => {
-    const t = TEMPLATES.find(t => t.label === label)
+  const applyTemplate = (id: string) => {
+    const t = allTemplates.find(t => t.id === id)
     if (!t) return
     const now = new Date()
     const mes = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })
@@ -99,7 +128,73 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
       .replace(/{remetente}/g, senderName)
       .replace(/{mes}/g, mes)
     )
-    setSelectedTemplate(label)
+    setSelectedTemplate(id)
+  }
+
+  const saveCustomTemplate = () => {
+    if (!newTplLabel || !newTplBody) { toast.error('Preencha o nome e corpo do template'); return }
+    const tpl: Template = {
+      id: `custom-${Date.now()}`,
+      label: newTplLabel,
+      subject: newTplSubject,
+      body: newTplBody,
+      isCustom: true,
+    }
+    setCustomTemplates(prev => [...prev, tpl])
+    setNewTplLabel('')
+    setNewTplSubject('')
+    setNewTplBody('')
+    setShowNewTemplate(false)
+    toast.success('Template criado!')
+  }
+
+  const deleteCustomTemplate = (id: string) => {
+    setCustomTemplates(prev => prev.filter(t => t.id !== id))
+    if (selectedTemplate === id) setSelectedTemplate('')
+  }
+
+  const improveWithAI = async () => {
+    if (!body) { toast.error('Escreva a mensagem primeiro'); return }
+    setAiImproving(true)
+    setAiImprovedText('')
+    setAiImproveOpen(true)
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Melhore o seguinte email profissional de agência de marketing, tornando-o mais persuasivo, claro e com CTA forte. Mantenha o mesmo contexto e tom. Retorne APENAS o texto melhorado do email, sem explicações ou introdução:\n\n${body}`,
+          }],
+        }),
+      })
+
+      if (!res.ok || !res.body) throw new Error('Falha')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let improved = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        improved += decoder.decode(value)
+        setAiImprovedText(improved)
+      }
+    } catch {
+      toast.error('Erro ao melhorar com IA. Verifique a chave API em Integrações.')
+      setAiImproveOpen(false)
+    } finally {
+      setAiImproving(false)
+    }
+  }
+
+  const applyAiImprovement = () => {
+    setBody(aiImprovedText)
+    setAiImproveOpen(false)
+    toast.success('Email melhorado aplicado!')
   }
 
   const sendEmail = async () => {
@@ -137,7 +232,7 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
           <p className="text-sm text-muted-foreground">Envie emails diretamente para clientes e leads</p>
         </div>
         <Badge className="text-xs bg-amber-50 text-amber-600 border border-amber-200">
-          Integre seu email em Configurações → Integrações
+          Configure SMTP em Integrações → Email
         </Badge>
       </div>
 
@@ -147,7 +242,7 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
           <Card className="border-border shadow-none">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Mail className="w-4 h-4 text-[#5B8CFF]" /> Novo email
+                <Mail className="w-4 h-4" style={{ color: 'var(--brand-primary,#5B8CFF)' }} /> Novo email
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -219,7 +314,19 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
 
               {/* Body */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Mensagem</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Mensagem</Label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+                    onClick={improveWithAI}
+                    disabled={!body || aiImproving}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Melhorar com CYCLO IA
+                  </Button>
+                </div>
                 <Textarea
                   value={body}
                   onChange={e => setBody(e.target.value)}
@@ -236,7 +343,8 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
                 <Button
                   onClick={sendEmail}
                   disabled={sending || !to || !subject || !body}
-                  className="bg-[#5B8CFF] hover:bg-[#4a7aee] text-white gap-1.5 text-sm"
+                  className="text-white gap-1.5 text-sm"
+                  style={{ background: 'var(--brand-primary,#5B8CFF)' }}
                 >
                   <Send className="w-3.5 h-3.5" />
                   {sending ? 'Enviando...' : 'Enviar email'}
@@ -250,23 +358,45 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
         <div className="space-y-4">
           {/* Templates */}
           <Card className="border-border shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Templates</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 p-3">
-              {TEMPLATES.map(t => (
-                <button
-                  key={t.label}
-                  onClick={() => applyTemplate(t.label)}
-                  className={cn(
-                    'w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors border',
-                    selectedTemplate === t.label
-                      ? 'bg-[#5B8CFF]/10 text-[#5B8CFF] border-[#5B8CFF]/30'
-                      : 'bg-muted/30 border-transparent hover:bg-muted text-foreground'
-                  )}
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold">Templates</CardTitle>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1"
+                  style={{ color: 'var(--brand-primary,#5B8CFF)' }}
+                  onClick={() => setShowNewTemplate(true)}
                 >
-                  {t.label}
-                </button>
+                  <Plus className="w-3 h-3" /> Novo
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-1.5 p-3">
+              {allTemplates.map(t => (
+                <div key={t.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => applyTemplate(t.id)}
+                    className={cn(
+                      'flex-1 text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors border',
+                      selectedTemplate === t.id
+                        ? 'text-white border-transparent'
+                        : 'bg-muted/30 border-transparent hover:bg-muted text-foreground'
+                    )}
+                    style={selectedTemplate === t.id ? { background: 'var(--brand-primary,#5B8CFF)', borderColor: 'transparent' } : undefined}
+                  >
+                    {t.label}
+                    {t.isCustom && <span className="ml-1 text-[9px] opacity-60">· custom</span>}
+                  </button>
+                  {t.isCustom && (
+                    <button
+                      onClick={() => deleteCustomTemplate(t.id)}
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               ))}
             </CardContent>
           </Card>
@@ -278,7 +408,9 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
                 <span className="flex items-center gap-2">
                   <History className="w-3.5 h-3.5" /> Histórico
                   {history.length > 0 && (
-                    <Badge className="text-[10px] bg-[#5B8CFF]/10 text-[#5B8CFF] border-0">{history.length}</Badge>
+                    <Badge className="text-[10px] border-0" style={{ background: 'var(--brand-primary,#5B8CFF)1A', color: 'var(--brand-primary,#5B8CFF)' }}>
+                      {history.length}
+                    </Badge>
                   )}
                 </span>
                 {showHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -311,6 +443,84 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
           </Card>
         </div>
       </div>
+
+      {/* New template modal */}
+      <Dialog open={showNewTemplate} onOpenChange={setShowNewTemplate}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Criar novo template</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold">Nome do template *</Label>
+              <Input value={newTplLabel} onChange={e => setNewTplLabel(e.target.value)} placeholder="Ex: Proposta de Tráfego Pago" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold">Assunto</Label>
+              <Input value={newTplSubject} onChange={e => setNewTplSubject(e.target.value)} placeholder="Assunto do email (use {nome}, {agencia}, {mes})" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold">Corpo do email *</Label>
+              <Textarea
+                value={newTplBody}
+                onChange={e => setNewTplBody(e.target.value)}
+                placeholder="Corpo do email. Variáveis: {nome}, {agencia}, {remetente}, {mes}"
+                rows={8}
+                className="text-sm resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                Variáveis disponíveis: <code className="text-xs bg-muted px-1 rounded">{'{nome}'}</code>{' '}
+                <code className="text-xs bg-muted px-1 rounded">{'{agencia}'}</code>{' '}
+                <code className="text-xs bg-muted px-1 rounded">{'{remetente}'}</code>{' '}
+                <code className="text-xs bg-muted px-1 rounded">{'{mes}'}</code>
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setShowNewTemplate(false)} className="flex-1">Cancelar</Button>
+              <Button onClick={saveCustomTemplate} className="flex-1 text-white" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                Salvar template
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Improve modal */}
+      <Dialog open={aiImproveOpen} onOpenChange={v => { if (!aiImproving) setAiImproveOpen(v) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-purple-500" /> CYCLO IA — Melhorando seu email
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            {aiImproving && !aiImprovedText && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Reescrevendo com IA...
+              </div>
+            )}
+            {aiImprovedText && (
+              <Textarea
+                value={aiImprovedText}
+                onChange={e => setAiImprovedText(e.target.value)}
+                rows={12}
+                className="text-sm resize-none"
+              />
+            )}
+            {!aiImproving && aiImprovedText && (
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setAiImproveOpen(false)} className="flex-1 gap-1.5">
+                  <X className="w-3.5 h-3.5" /> Descartar
+                </Button>
+                <Button onClick={applyAiImprovement} className="flex-1 text-white gap-1.5" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                  <Check className="w-3.5 h-3.5" /> Aplicar melhoria
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

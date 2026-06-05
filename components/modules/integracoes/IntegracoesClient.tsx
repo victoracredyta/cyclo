@@ -19,14 +19,13 @@ interface Props {
   orgSlug: string
 }
 
-type Tab = 'api' | 'leads' | 'tracking' | 'email' | 'whatsapp'
+type Tab = 'api' | 'leads' | 'tracking' | 'email'
 
 const TAB_CONFIG: { value: Tab; label: string; icon: React.ElementType }[] = [
   { value: 'api', label: 'CYCLO IA — Chaves API', icon: Key },
   { value: 'leads', label: 'Captura de Leads', icon: Webhook },
   { value: 'tracking', label: 'Rastreamento UTM', icon: BarChart3 },
   { value: 'email', label: 'Email', icon: Mail },
-  { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
 ]
 
 function CopyButton({ value }: { value: string }) {
@@ -434,47 +433,6 @@ export function IntegracoesClient({ orgId, orgSlug }: Props) {
         </div>
       )}
 
-      {/* WhatsApp */}
-      {tab === 'whatsapp' && (
-        <div className="max-w-2xl space-y-6">
-          <p className="text-sm text-muted-foreground">Integre WhatsApp para enviar automações, notificações e comunicações diretamente para seus leads e clientes.</p>
-
-          {[
-            { name: 'Z-API', desc: 'Solução brasileira — conecte via QR Code. Ideal para testes e produção.', color: '#25D366' },
-            { name: 'Twilio WhatsApp', desc: 'API oficial da Meta via Twilio. Para alto volume de mensagens.', color: '#F22F46' },
-            { name: 'Evolution API', desc: 'Open source, auto-hospedado. Máximo controle.', color: '#6B7280' },
-          ].map(provider => (
-            <Card key={provider.name} className="border-border shadow-none">
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${provider.color}15` }}>
-                  <MessageSquare className="w-5 h-5" style={{ color: provider.color }} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{provider.name}</p>
-                  <p className="text-xs text-muted-foreground">{provider.desc}</p>
-                </div>
-                <Button size="sm" variant="outline" className="text-xs gap-1.5 shrink-0"
-                  onClick={() => toast.info('Configuração disponível em breve')}>
-                  Configurar <ChevronRight className="w-3 h-3" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-
-          <Card className="border-border shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Webhook de recebimento</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">Configure este URL no seu provedor para receber mensagens de WhatsApp no CYCLO:</p>
-              <div className="flex gap-2">
-                <Input value={`https://cyclo-beta.vercel.app/api/whatsapp/webhook/${orgId}`} readOnly className="h-9 text-xs font-mono bg-muted/50" />
-                <CopyButton value={`https://cyclo-beta.vercel.app/api/whatsapp/webhook/${orgId}`} />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   )
 }

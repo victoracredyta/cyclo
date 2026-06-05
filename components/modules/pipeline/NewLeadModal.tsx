@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -12,10 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PipelineStage, Lead } from '@/types/database'
-
-type LeadWithResponsible = Lead & {
-  responsible: { id: string; full_name: string | null; avatar_url: string | null } | null
-}
+import type { LeadWithResponsible } from './PipelineBoard'
 
 const schema = z.object({
   name: z.string().min(2, 'Nome obrigatório'),
@@ -24,6 +22,7 @@ const schema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   origin: z.string().optional(),
+  customOrigin: z.string().optional(),
   priority: z.enum(['alta', 'media', 'baixa']),
   stage_id: z.string(),
   responsible_id: z.string().optional(),
@@ -32,7 +31,12 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const ORIGINS = ['Indicação', 'LinkedIn', 'Google Ads', 'Instagram', 'Evento', 'Referral', 'Orgânico']
+const ORIGINS = [
+  'Google Ads', 'Meta Ads', 'LinkedIn Ads', 'Instagram Orgânico',
+  'TikTok Ads', 'WhatsApp', 'Indicação', 'Prospecção Ativa',
+  'Evento', 'E-mail Marketing', 'Orgânico / SEO', 'Referral',
+  'Personalizado',
+]
 
 interface NewLeadModalProps {
   stages: PipelineStage[]
@@ -43,6 +47,7 @@ interface NewLeadModalProps {
 }
 
 export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated }: NewLeadModalProps) {
+  const [selectedOrigin, setSelectedOrigin] = useState('')
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { stage_id: defaultStageId ?? stages[0]?.id, priority: 'media' },
@@ -53,6 +58,8 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
     const { data: me } = await supabase.from('users').select('organization_id').single()
     if (!me?.organization_id) return
 
+    const finalOrigin = data.origin === 'Personalizado' ? (data.customOrigin || 'Personalizado') : data.origin
+
     const { data: lead, error } = await supabase.from('leads').insert({
       organization_id: me.organization_id,
       stage_id: data.stage_id,
@@ -61,7 +68,7 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
       value: data.value ? Number(data.value) : undefined,
       email: data.email || undefined,
       phone: data.phone || undefined,
-      origin: data.origin || undefined,
+      origin: finalOrigin || undefined,
       priority: data.priority,
       responsible_id: data.responsible_id || undefined,
       next_action: data.next_action || undefined,
@@ -74,7 +81,7 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">Novo lead</DialogTitle>
         </DialogHeader>
@@ -111,29 +118,36 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm">Prioridade</Label>
+              <Label className="text-sm">Temperatura do Lead</Label>
               <Select defaultValue="media" onValueChange={v => setValue('priority', (v ?? 'media') as 'alta' | 'media' | 'baixa')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="alta">Alta</SelectItem>
-                  <SelectItem value="media">Média</SelectItem>
-                  <SelectItem value="baixa">Baixa</SelectItem>
+                  <SelectItem value="alta">🔥 Quente — Alta prioridade</SelectItem>
+                  <SelectItem value="media">🌡️ Morno — Média prioridade</SelectItem>
+                  <SelectItem value="baixa">❄️ Frio — Baixa prioridade</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Origem</Label>
-              <Select onValueChange={v => setValue('origin', v as string)}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-sm">Origem do Lead</Label>
+              <Select onValueChange={(v: string | null) => { if (!v) return; setSelectedOrigin(v); setValue('origin', v) }}>
+                <SelectTrigger><SelectValue placeholder="Como esse lead chegou?" /></SelectTrigger>
                 <SelectContent>
                   {ORIGINS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {selectedOrigin === 'Personalizado' && (
+                <Input
+                  placeholder="Digite a origem personalizada..."
+                  {...register('customOrigin')}
+                  className="mt-2"
+                />
+              )}
             </div>
-            <div className="space-y-1.5">
+            <div className="col-span-2 space-y-1.5">
               <Label className="text-sm">Responsável</Label>
               <Select onValueChange={v => setValue('responsible_id', v as string)}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecione o vendedor" /></SelectTrigger>
                 <SelectContent>
                   {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
                 </SelectContent>
@@ -147,7 +161,7 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
 
           <div className="flex gap-3 pt-1">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
-            <Button type="submit" disabled={isSubmitting} className="flex-1 bg-[#5B8CFF] hover:bg-[#4a7aee] text-white">
+            <Button type="submit" disabled={isSubmitting} className="flex-1 text-white" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
               {isSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
               Criar lead
             </Button>

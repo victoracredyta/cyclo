@@ -70,10 +70,10 @@ export function Sidebar() {
       )}>
         <div className="relative shrink-0">
           <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7">
-            <circle cx="16" cy="16" r="12" stroke="#5B8CFF" strokeWidth="2.5" fill="none"/>
-            <path d="M16 4 A12 12 0 0 1 28 16" stroke="#5B8CFF" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-            <path d="M26.5 12.5 L28 16 L24.5 15" stroke="#5B8CFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            <circle cx="16" cy="16" r="2.5" fill="#5B8CFF"/>
+            <circle cx="16" cy="16" r="12" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2.5" fill="none"/>
+            <path d="M16 4 A12 12 0 0 1 28 16" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+            <path d="M26.5 12.5 L28 16 L24.5 15" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <circle cx="16" cy="16" r="2.5" fill="var(--brand-primary,#5B8CFF)"/>
           </svg>
         </div>
         <AnimatePresence>
@@ -86,7 +86,7 @@ export function Sidebar() {
               className="overflow-hidden"
             >
               <span className="text-white font-bold text-base tracking-tight whitespace-nowrap">CYCLO</span>
-              <p className="text-[#5B8CFF] text-[9px] font-medium -mt-0.5 whitespace-nowrap">by ACREDYTA</p>
+              <p className="text-[9px] font-medium -mt-0.5 whitespace-nowrap" style={{ color: 'var(--brand-primary,#5B8CFF)' }}>by ACREDYTA</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -118,16 +118,17 @@ export function Sidebar() {
                   title={sidebarCollapsed ? item.label : undefined}
                   className={cn(
                     'flex items-center gap-2.5 mx-1.5 mb-0.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors group',
-                    isActive
-                      ? 'bg-[#5B8CFF]/15 text-[#5B8CFF]'
-                      : 'text-white/50 hover:text-white/90 hover:bg-white/[0.06]',
+                    isActive ? '' : 'text-white/50 hover:text-white/90 hover:bg-white/[0.06]',
                     sidebarCollapsed && 'justify-center px-0'
                   )}
+                  style={isActive ? {
+                    backgroundColor: 'color-mix(in srgb, var(--brand-primary,#5B8CFF) 15%, transparent)',
+                    color: 'var(--brand-primary,#5B8CFF)',
+                  } : undefined}
                 >
                   <Icon className={cn(
                     'shrink-0',
                     sidebarCollapsed ? 'w-5 h-5' : 'w-4 h-4',
-                    isActive ? 'text-[#5B8CFF]' : 'text-current'
                   )} />
                   <AnimatePresence>
                     {!sidebarCollapsed && (

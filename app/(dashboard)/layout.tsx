@@ -19,27 +19,33 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!appUser?.organization_id) redirect('/register')
   if (!appUser?.onboarding_completed) redirect('/onboarding/agency')
 
-  const { count: notifCount } = await supabase
-    .from('notifications')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('is_read', false)
+  const [{ count: notifCount }, { data: org }] = await Promise.all([
+    supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false),
+    supabase.from('organizations').select('primary_color, secondary_color, button_color').eq('id', appUser.organization_id).single(),
+  ])
+
+  const brandPrimary = org?.primary_color ?? '#5B8CFF'
+  const brandSecondary = org?.secondary_color ?? '#4a7aee'
+  const brandButton = org?.button_color ?? '#5B8CFF'
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Topbar
-          userName={appUser?.full_name ?? undefined}
-          userEmail={appUser?.email ?? undefined}
-          userAvatar={appUser?.avatar_url ?? undefined}
-          notificationCount={notifCount ?? 0}
-        />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `:root{--brand-primary:${brandPrimary};--brand-secondary:${brandSecondary};--brand-button:${brandButton};}` }} />
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+          <Topbar
+            userName={appUser?.full_name ?? undefined}
+            userEmail={appUser?.email ?? undefined}
+            userAvatar={appUser?.avatar_url ?? undefined}
+            notificationCount={notifCount ?? 0}
+          />
+          <main className="flex-1 overflow-y-auto p-6">
+            {children}
+          </main>
+        </div>
+        <Toaster position="bottom-right" richColors />
       </div>
-      <Toaster position="bottom-right" richColors />
-    </div>
+    </>
   )
 }

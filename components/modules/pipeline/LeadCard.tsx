@@ -13,11 +13,41 @@ type LeadWithResponsible = Lead & {
   responsible: { id: string; full_name: string | null; avatar_url: string | null } | null
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  alta: 'bg-red-500/10 text-red-500 border-red-500/20',
-  media: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
-  baixa: 'bg-muted text-muted-foreground border-border',
+// Temperature (mapped from priority)
+const TEMP_CONFIG: Record<string, { label: string; emoji: string; color: string; bg: string }> = {
+  alta:  { label: 'Quente', emoji: '🔥', color: '#e1493c', bg: '#e1493c15' },
+  media: { label: 'Morno',  emoji: '🌡️', color: '#F59E0B', bg: '#F59E0B15' },
+  baixa: { label: 'Frio',   emoji: '❄️', color: '#5B8CFF', bg: '#5B8CFF15' },
 }
+
+// Origin colors
+const ORIGIN_COLOR: Record<string, string> = {
+  'Google Ads': '#4285F4',
+  'Meta Ads': '#1877F2',
+  'LinkedIn Ads': '#0A66C2',
+  'LinkedIn': '#0A66C2',
+  'Instagram Orgânico': '#E4405F',
+  'Instagram': '#E4405F',
+  'TikTok Ads': '#010101',
+  'WhatsApp': '#25D366',
+  'Indicação': '#12B981',
+  'Prospecção Ativa': '#F59E0B',
+  'Prospecção': '#F59E0B',
+  'Evento': '#8B5CF6',
+  'E-mail Marketing': '#EC4899',
+  'Orgânico / SEO': '#6B7280',
+  'Orgânico': '#6B7280',
+  'Referral': '#14B8A6',
+}
+
+function originColor(origin: string | null) {
+  if (!origin) return '#6B7280'
+  return ORIGIN_COLOR[origin] ?? '#6B7280'
+}
+
+// Stuck threshold: configurable via org settings (default 14 days)
+const STUCK_WARN_DAYS = 14
+const STUCK_DANGER_DAYS = 21
 
 function daysInStage(createdAt: string) {
   return Math.floor((Date.now() - new Date(createdAt).getTime()) / 864e5)
@@ -34,17 +64,36 @@ export function LeadCard({ lead, isDragging = false }: LeadCardProps) {
 
   const style = { transform: CSS.Transform.toString(transform), transition }
   const days = daysInStage(lead.created_at)
+  const temp = TEMP_CONFIG[lead.priority] ?? TEMP_CONFIG.media
+  const stuck = days >= STUCK_DANGER_DAYS ? 'danger' : days >= STUCK_WARN_DAYS ? 'warn' : 'ok'
+  const oc = originColor(lead.origin)
+
+  const borderColor = stuck === 'danger'
+    ? '#e1493c'
+    : stuck === 'warn'
+    ? '#F59E0B40'
+    : undefined
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        borderColor: (isSortableDragging || isDragging) ? 'var(--brand-primary,#5B8CFF)' : borderColor,
+      }}
       className={cn(
         'bg-card border border-border rounded-xl p-3 cursor-pointer select-none group',
-        'hover:border-[#5B8CFF]/40 hover:shadow-sm transition-all',
-        (isSortableDragging || isDragging) && 'opacity-50 shadow-lg border-[#5B8CFF]/60',
+        'hover:shadow-sm transition-all',
+        stuck === 'danger' && 'border-red-500/40 bg-red-500/[0.02]',
+        stuck === 'warn' && 'border-yellow-500/30',
+        (isSortableDragging || isDragging) && 'opacity-50 shadow-lg',
       )}
     >
+      {/* Origin bar — top accent line */}
+      {lead.origin && (
+        <div className="h-0.5 rounded-full -mx-3 -mt-3 mb-2.5" style={{ background: oc }} />
+      )}
+
       {/* Drag handle + title row */}
       <div className="flex items-start gap-1.5">
         <button
@@ -63,30 +112,46 @@ export function LeadCard({ lead, isDragging = false }: LeadCardProps) {
 
       {/* Value */}
       {lead.value && (
-        <div className="mt-2 font-bold text-sm text-[#5B8CFF]" onClick={() => router.push(`/pipeline/${lead.id}`)}>
+        <div className="mt-2 font-bold text-sm" style={{ color: 'var(--brand-primary,#5B8CFF)' }} onClick={() => router.push(`/pipeline/${lead.id}`)}>
           R$ {lead.value.toLocaleString('pt-BR')}
         </div>
       )}
 
-      {/* Tags + meta */}
-      <div className="flex items-center gap-1.5 mt-2.5 flex-wrap" onClick={() => router.push(`/pipeline/${lead.id}`)}>
-        {lead.tag && (
-          <Badge className="text-[10px] px-1.5 py-0 h-4 bg-[#5B8CFF]/10 text-[#5B8CFF] border-0">{lead.tag}</Badge>
+      {/* Origin + temperature badges */}
+      <div className="flex items-center gap-1.5 mt-2 flex-wrap" onClick={() => router.push(`/pipeline/${lead.id}`)}>
+        {lead.origin && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold"
+            style={{ background: `${oc}18`, color: oc }}
+          >
+            {lead.origin}
+          </span>
         )}
-        <Badge className={cn('text-[10px] px-1.5 py-0 h-4 border', PRIORITY_COLORS[lead.priority])}>
-          {lead.priority}
-        </Badge>
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold"
+          style={{ background: temp.bg, color: temp.color }}
+        >
+          {temp.emoji} {temp.label}
+        </span>
+        {lead.tag && (
+          <Badge className="text-[10px] px-1.5 py-0 h-4 bg-muted text-muted-foreground border-0">{lead.tag}</Badge>
+        )}
+      </div>
+
+      {/* Meta row */}
+      <div className="flex items-center gap-1.5 mt-2" onClick={() => router.push(`/pipeline/${lead.id}`)}>
         <div className={cn(
-          'flex items-center gap-0.5 text-[10px] ml-auto',
-          days > 10 ? 'text-red-500' : 'text-muted-foreground'
+          'flex items-center gap-0.5 text-[10px]',
+          stuck === 'danger' ? 'text-red-500 font-semibold' : stuck === 'warn' ? 'text-yellow-500' : 'text-muted-foreground'
         )}>
           <Clock className="w-2.5 h-2.5" />
           {days}d
+          {stuck !== 'ok' && <span className="ml-0.5">{stuck === 'danger' ? '⚠️' : '!'}</span>}
         </div>
         {lead.responsible && (
-          <Avatar className="h-5 w-5 ml-0.5">
+          <Avatar className="h-5 w-5 ml-auto">
             <AvatarImage src={lead.responsible.avatar_url ?? undefined} />
-            <AvatarFallback className="text-[8px] bg-[#5B8CFF] text-white">
+            <AvatarFallback className="text-[8px] text-white" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
               {(lead.responsible.full_name ?? 'U').charAt(0)}
             </AvatarFallback>
           </Avatar>
