@@ -24,6 +24,7 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { AppUser } from '@/types/database'
+import { ColorPicker } from '@/components/common/ColorPicker'
 
 type OrgUser = {
   id: string
@@ -274,28 +275,22 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     toast.success('Funil atualizado!')
   }
 
-  const addFunnelStage = async (funnelId: string, stageName?: string) => {
+  const addFunnelStage = (funnelId: string, stageName?: string) => {
     const name = (stageName ?? funnelStageName).trim()
     if (!name) return
     const funnel = funnels.find(f => f.id === funnelId)
     if (!funnel) return
-    const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) { toast.error('Organização não encontrada'); return }
     const nextOrder = funnel.stages.length > 0 ? Math.max(...funnel.stages.map(s => s.order_index)) + 1 : 0
-    const { data, error } = await supabase.from('pipeline_stages').insert({
-      organization_id: me.organization_id,
+    const newStage: FunnelStage = {
+      id: crypto.randomUUID(),
       name,
       color: funnelStageColor,
       order_index: nextOrder,
-    }).select().single()
-    if (error) { toast.error(`Erro ao criar etapa: ${error.message}`); return }
-    const newStage: FunnelStage = { id: data.id, name: data.name, color: data.color, order_index: data.order_index }
+    }
     saveFunnels(funnels.map(f => f.id === funnelId ? { ...f, stages: [...f.stages, newStage] } : f))
     setStageInputByFunnel(prev => ({ ...prev, [funnelId]: '' }))
     setFunnelStageName('')
-    setAddingStageToFunnelId(null)
-    toast.success(`Etapa "${newStage.name}" adicionada!`)
+    toast.success(`Etapa "${name}" adicionada!`)
   }
 
   const updateFunnelStage = (funnelId: string, updatedStage: FunnelStage) => {
@@ -310,31 +305,39 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     toast.success(`Funil "${copy.name}" duplicado! Adicione as etapas.`)
   }
 
-  const deleteFunnelStage = async (funnelId: string, stageId: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.from('pipeline_stages').delete().eq('id', stageId)
-    if (error) { toast.error('Erro ao remover etapa'); return }
+  const deleteFunnelStage = (funnelId: string, stageId: string) => {
     saveFunnels(funnels.map(f => f.id === funnelId ? { ...f, stages: f.stages.filter(s => s.id !== stageId) } : f))
     toast.success('Etapa removida')
   }
 
   const uploadAvatar = async (file: File) => {
     if (!appUser?.id) return
+    const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']
+    if (!ALLOWED.includes(file.type)) {
+      toast.error('Formato inválido. Use PNG, JPEG, WEBP ou SVG.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo 2MB.')
+      return
+    }
     setUploadingAvatar(true)
     const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    const orgId = me?.organization_id ?? 'org'
     const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
-    const fileName = `${appUser.id}.${ext}`
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file, { upsert: true, contentType: file.type })
+    const path = `${orgId}/${appUser.id}-${Date.now()}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
     if (uploadError) {
-      toast.error(`Erro ao enviar foto: ${uploadError.message}`)
+      toast.error(`Erro no upload: ${uploadError.message}`)
       setUploadingAvatar(false)
       return
     }
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
     const urlWithTs = `${publicUrl}?t=${Date.now()}`
     const { error: updateError } = await supabase.from('users').update({ avatar_url: urlWithTs }).eq('id', appUser.id)
     if (updateError) {
-      toast.error('Erro ao salvar foto no perfil')
+      toast.error(`Erro ao salvar foto: ${updateError.message}`)
     } else {
       setAvatarUrl(urlWithTs)
       toast.success('Foto de perfil atualizada!')
@@ -468,7 +471,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                 <div>
                   <p className="font-semibold text-sm">{fullName || 'Seu nome'}</p>
                   <p className="text-xs text-muted-foreground">{appUser?.email}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Clique na foto para alterar</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Clique na foto para alterar · Máx 2MB — PNG, JPEG, WEBP ou SVG</p>
                   <Badge className="text-[10px] mt-1 border-0" style={{ backgroundColor: `${PERMISSION_CONFIG[appUser?.permission ?? '']?.color ?? '#6B7280'}15`, color: PERMISSION_CONFIG[appUser?.permission ?? '']?.color ?? '#6B7280' }}>
                     {appUser?.permission ?? 'Usuário'}
                   </Badge>
@@ -752,18 +755,11 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                     <Label className="text-xs font-semibold">Descrição (opcional)</Label>
                     <Input value={editingStage.stage.description ?? ''} onChange={e => setEditingStage(p => p ? { ...p, stage: { ...p.stage, description: e.target.value } } : p)} placeholder="Descreva o que acontece nesta etapa..." className="h-9 text-sm" />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold">Cor</Label>
-                    <div className="flex gap-2 flex-wrap items-center">
-                      {STAGE_PALETTE.map(c => (
-                        <button key={c} onClick={() => setEditingStage(p => p ? { ...p, stage: { ...p.stage, color: c } } : p)}
-                          className={cn('w-6 h-6 rounded-full border-2 transition-all', editingStage.stage.color === c ? 'border-foreground scale-110' : 'border-transparent')}
-                          style={{ background: c }} />
-                      ))}
-                      <input type="color" value={editingStage.stage.color} onChange={e => setEditingStage(p => p ? { ...p, stage: { ...p.stage, color: e.target.value } } : p)}
-                        className="w-6 h-6 rounded-full cursor-pointer border border-border p-0" title="Cor personalizada" />
-                    </div>
-                  </div>
+                  <ColorPicker
+                    label="Cor da etapa"
+                    value={editingStage.stage.color}
+                    onChange={c => setEditingStage(p => p ? { ...p, stage: { ...p.stage, color: c } } : p)}
+                  />
                   <div className="flex gap-2 pt-1">
                     <Button variant="outline" className="flex-1 text-sm" onClick={() => setEditingStage(null)}>Cancelar</Button>
                     <Button onClick={() => updateFunnelStage(editingStage.funnelId, editingStage.stage)} disabled={!editingStage.stage.name.trim()} className="flex-1 text-white text-sm" style={{ background: '#12B981' }}>
@@ -950,15 +946,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                 <Label className="text-xs font-semibold">Nome da tag</Label>
                 <Input value={newTagName} onChange={e => setNewTagName(e.target.value)} placeholder="Ex: Reunião Agendada, Proposta Enviada..." className="h-9 text-sm" onKeyDown={e => e.key === 'Enter' && createTag()} />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Cor</Label>
-                <div className="flex gap-2 items-center">
-                  {['#5B8CFF', '#12B981', '#F59E0B', '#e1493c', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6'].map(c => (
-                    <button key={c} onClick={() => setNewTagColor(c)} className={cn('w-6 h-6 rounded-full border-2 transition-all', newTagColor === c ? 'border-foreground scale-110' : 'border-transparent')} style={{ background: c }} />
-                  ))}
-                  <input type="color" value={newTagColor} onChange={e => setNewTagColor(e.target.value)} className="w-7 h-7 rounded-full cursor-pointer border border-border p-0" />
-                </div>
-              </div>
+              <ColorPicker label="Cor" value={newTagColor} onChange={setNewTagColor} />
               <Button onClick={createTag} disabled={!newTagName.trim()} className="w-full text-white text-xs gap-1.5" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
                 <Plus className="w-3.5 h-3.5" /> Criar tag
               </Button>

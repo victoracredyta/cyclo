@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Palette, Globe, CheckCircle, ExternalLink, LayoutDashboard, Users, Kanban, BarChart2, Upload, Loader2, ImageIcon } from 'lucide-react'
+import { Palette, Globe, CheckCircle, ExternalLink, LayoutDashboard, Users, Kanban, BarChart2, Upload, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { Organization } from '@/types/database'
+import { ColorPicker } from '@/components/common/ColorPicker'
 
 const PRESET_COLORS = [
   { name: 'Azul CYCLO', primary: '#5B8CFF', secondary: '#4a7aee', button: '#5B8CFF' },
@@ -54,34 +55,35 @@ export function WhiteLabelClient({ org }: Props) {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml']
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp']
     if (!allowed.includes(file.type)) {
-      toast.error('Formato inválido. Use PNG, JPEG ou SVG.')
+      toast.error('Formato inválido. Use PNG, JPEG, SVG ou WEBP.')
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Arquivo muito grande. Máximo 2MB.')
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo 5MB.')
       return
     }
 
     setUploading(true)
     const supabase = createClient()
-    const ext = file.name.split('.').pop()
-    const path = `logos/${org?.id ?? 'org'}-${Date.now()}.${ext}`
+    const ext = (file.name.split('.').pop() ?? 'png').toLowerCase()
+    const path = `${org?.id ?? 'org'}/logo-${Date.now()}.${ext}`
 
-    const { error } = await supabase.storage.from('assets').upload(path, file, {
+    const { error } = await supabase.storage.from('branding').upload(path, file, {
       upsert: true,
       contentType: file.type,
     })
 
     if (error) {
-      toast.error('Erro no upload. Verifique se o bucket "assets" existe no Supabase Storage.')
+      toast.error(`Erro no upload: ${error.message}`)
       setUploading(false)
       return
     }
 
-    const { data: urlData } = supabase.storage.from('assets').getPublicUrl(path)
-    setLogoUrl(urlData.publicUrl)
+    const { data: urlData } = supabase.storage.from('branding').getPublicUrl(path)
+    const urlWithTs = `${urlData.publicUrl}?t=${Date.now()}`
+    setLogoUrl(urlWithTs)
     toast.success('Logo enviado com sucesso!')
     setUploading(false)
     e.target.value = ''
@@ -177,24 +179,27 @@ export function WhiteLabelClient({ org }: Props) {
 
                 {/* Upload button */}
                 <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-xs h-9"
-                    onClick={() => fileRef.current?.click()}
-                    disabled={uploading}
-                  >
-                    {uploading ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enviando...</>
-                    ) : (
-                      <><Upload className="w-3.5 h-3.5" /> Upload PNG / JPEG / SVG</>
-                    )}
-                  </Button>
+                  <div className="space-y-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs h-9"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enviando...</>
+                      ) : (
+                        <><Upload className="w-3.5 h-3.5" /> Enviar logo</>
+                      )}
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground">Máx 5MB — PNG, JPEG, SVG ou WEBP</p>
+                  </div>
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
                     className="hidden"
                     onChange={handleFileUpload}
                   />
@@ -244,35 +249,13 @@ export function WhiteLabelClient({ org }: Props) {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Primária', val: primary, set: setPrimary },
-                  { label: 'Secundária', val: secondary, set: setSecondary },
-                  { label: 'Botões', val: button, set: setButton },
-                ].map(({ label, val, set }) => (
-                  <div key={label} className="space-y-1.5">
-                    <Label className="text-xs font-semibold">{label}</Label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="color"
-                        value={val}
-                        onChange={e => set(e.target.value)}
-                        className="w-9 h-9 rounded-lg cursor-pointer border border-border p-0.5"
-                        title={`Escolher cor ${label.toLowerCase()}`}
-                      />
-                      <Input
-                        value={val}
-                        onChange={e => set(e.target.value)}
-                        className="h-9 text-xs font-mono"
-                        maxLength={7}
-                        placeholder="#000000"
-                      />
-                    </div>
-                  </div>
-                ))}
+                <ColorPicker label="Primária" value={primary} onChange={setPrimary} />
+                <ColorPicker label="Secundária" value={secondary} onChange={setSecondary} />
+                <ColorPicker label="Botões" value={button} onChange={setButton} />
               </div>
 
               <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2.5">
-                Clique na cor ou cole um código HEX. As cores se aplicam ao menu, botões e destaques em tempo real.
+                Clique na cor para abrir o seletor. Cole um código HEX direto no campo. As cores se aplicam em tempo real.
               </p>
             </CardContent>
           </Card>
