@@ -145,7 +145,7 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
               <textarea
                 {...register('objectives')}
                 rows={2}
-                placeholder="Objetivo principal do cliente com a agência..."
+                placeholder="Objetivo principal do cliente com sua empresa..."
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>

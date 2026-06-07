@@ -106,7 +106,7 @@ export function DashboardClient({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">{greeting}! 👋</h2>
-          <p className="text-muted-foreground text-sm mt-0.5">Aqui está o resumo da sua agência hoje.</p>
+          <p className="text-muted-foreground text-sm mt-0.5">Aqui está o resumo do seu negócio hoje.</p>
         </div>
         <div className="flex gap-2">
           <Link href="/crm">

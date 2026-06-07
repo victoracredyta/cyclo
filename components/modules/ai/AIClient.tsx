@@ -213,7 +213,7 @@ export function AIClient() {
             </div>
             <h3 className="text-lg font-bold mb-1">Como posso ajudar?</h3>
             <p className="text-sm text-muted-foreground mb-8 max-w-sm">
-              Sou especialista em marketing digital para agências. Estratégia, copy, análise — pergunte o que precisar.
+              Estratégia, copy, análise de dados, planejamento — sua assistente de operação. Pergunte o que precisar.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full max-w-2xl">
               {QUICK_PROMPTS.map((qp, i) => (

@@ -83,7 +83,7 @@ export default function LoginPage() {
         <div className="flex-1 flex flex-col justify-center px-10 py-12">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">Bem-vindo de volta</h1>
-            <p className="text-sm text-gray-500 mt-1.5">Acesse sua conta para continuar</p>
+            <p className="text-sm text-gray-500 mt-1.5">Acesse sua conta e continue de onde parou.</p>
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -92,7 +92,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="voce@agencia.com.br"
+                placeholder="seu@email.com.br"
                 autoComplete="email"
                 className="h-11 border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:border-[#5B8CFF] focus:ring-[#5B8CFF]/20 focus:bg-white transition-colors rounded-xl text-sm"
                 {...register('email')}
@@ -185,22 +185,21 @@ export default function LoginPage() {
           {/* Center headline */}
           <div className="space-y-8">
             <div className="space-y-4">
-              <h2 className="text-4xl xl:text-5xl font-bold text-white leading-[1.15] tracking-tight">
-                O CRM feito para<br />
-                <span style={{ color: '#5B8CFF' }}>agências</span> que<br />
-                querem crescer.
+              <h2 className="text-4xl xl:text-5xl font-bold text-white leading-[1.1] tracking-tight">
+                Toda a sua operação.<br />
+                <span style={{ color: '#5B8CFF' }}>Em um só lugar.</span>
               </h2>
-              <p className="text-gray-400 text-base leading-relaxed max-w-sm">
-                Gerencie leads, funis, automações e sua equipe em um só lugar. Simples, rápido e pensado para o mercado brasileiro.
+              <p className="text-gray-400 text-base leading-relaxed max-w-md">
+                Vendas, equipe, processos e resultados — reunidos em uma única plataforma para você organizar a rotina, vender mais e crescer com método.
               </p>
             </div>
 
             {/* Feature pills */}
             <div className="space-y-3">
               {[
-                { icon: Kanban, label: 'Pipeline visual com drag & drop', color: '#5B8CFF' },
-                { icon: Bot, label: 'IA integrada para prospecção e análise', color: '#12B981' },
-                { icon: BarChart3, label: 'Relatórios e metas em tempo real', color: '#F59E0B' },
+                { icon: Kanban, label: 'Pipeline visual — todo lead no lugar certo', color: '#5B8CFF' },
+                { icon: Bot, label: 'IA que escreve, organiza e analisa por você', color: '#12B981' },
+                { icon: BarChart3, label: 'Metas e resultados em tempo real', color: '#F59E0B' },
               ].map(({ icon: Icon, label, color }) => (
                 <div key={label} className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${color}18`, border: `1px solid ${color}30` }}>
@@ -216,7 +215,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-8 pt-4 border-t border-white/10">
             {[
               { value: '17', label: 'Módulos integrados' },
-              { value: '100%', label: 'Focado em agências' },
+              { value: '24/7', label: 'Disponível sempre' },
               { value: 'BR', label: 'Dados no Brasil' },
             ].map(({ value, label }) => (
               <div key={label}>

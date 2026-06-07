@@ -15,7 +15,7 @@ import { Loader2, Eye, EyeOff } from 'lucide-react'
 
 const schema = z.object({
   fullName: z.string().min(2, 'Nome obrigatório'),
-  agencyName: z.string().min(2, 'Nome da agência obrigatório'),
+  agencyName: z.string().min(2, 'Nome da empresa obrigatório'),
   email: z.string().email('Email inválido'),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
   confirmPassword: z.string(),
@@ -74,7 +74,7 @@ export default function RegisterPage() {
       <CardHeader className="space-y-1 pb-4">
         <CardTitle className="text-xl font-bold text-white">Criar sua conta</CardTitle>
         <CardDescription className="text-gray-400">
-          Comece gratuitamente. Sem cartão de crédito.
+          Em 1 minuto sua operação está rodando. Sem cartão de crédito.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -91,10 +91,10 @@ export default function RegisterPage() {
               {errors.fullName && <p className="text-red-400 text-xs">{errors.fullName.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="agencyName" className="text-gray-300 text-sm">Nome da agência</Label>
+              <Label htmlFor="agencyName" className="text-gray-300 text-sm">Nome da empresa</Label>
               <Input
                 id="agencyName"
-                placeholder="ACREDYTA"
+                placeholder="Sua empresa"
                 className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-[#5B8CFF]"
                 {...register('agencyName')}
               />
@@ -107,7 +107,7 @@ export default function RegisterPage() {
             <Input
               id="email"
               type="email"
-              placeholder="voce@agencia.com.br"
+              placeholder="seu@email.com.br"
               className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-[#5B8CFF]"
               {...register('email')}
             />
