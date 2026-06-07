@@ -52,18 +52,29 @@ const LOST_REASONS = [
   'Não tem interesse', 'Negociação travou', 'Lead frio demais', 'Personalizado',
 ]
 
-type ActivityIcon = { icon: React.ElementType; color: string; bg: string }
+type ActivityIcon = { icon: React.ElementType; color: string; bg: string; label: string }
 const ACTIVITY_TYPE: Record<string, ActivityIcon> = {
-  nota:         { icon: MessageSquare, color: '#6B7280', bg: '#6B728015' },
-  email:        { icon: Mail,          color: '#5B8CFF', bg: '#5B8CFF15' },
-  ligacao:      { icon: Phone,         color: '#12B981', bg: '#12B98115' },
-  reuniao:      { icon: Calendar,      color: '#8B5CF6', bg: '#8B5CF615' },
-  tarefa:       { icon: CheckSquare,   color: '#F59E0B', bg: '#F59E0B15' },
-  stage_change: { icon: ArrowRight,    color: '#5B8CFF', bg: '#5B8CFF15' },
-  ganho:        { icon: Check,         color: '#12B981', bg: '#12B98115' },
-  perdido:      { icon: X,             color: '#e1493c', bg: '#e1493c15' },
-  criado:       { icon: Activity,      color: '#8B5CF6', bg: '#8B5CF615' },
+  nota:          { icon: MessageSquare, color: '#6B7280', bg: '#6B728015', label: 'Nota' },
+  email:         { icon: Mail,          color: '#5B8CFF', bg: '#5B8CFF15', label: 'E-mail' },
+  email_externo: { icon: Mail,          color: '#5B8CFF', bg: '#5B8CFF15', label: 'E-mail externo' },
+  ligacao:       { icon: Phone,         color: '#12B981', bg: '#12B98115', label: 'Ligação' },
+  reuniao:       { icon: Calendar,      color: '#8B5CF6', bg: '#8B5CF615', label: 'Reunião' },
+  tarefa:        { icon: CheckSquare,   color: '#F59E0B', bg: '#F59E0B15', label: 'Atividade' },
+  stage_change:  { icon: ArrowRight,    color: '#5B8CFF', bg: '#5B8CFF15', label: 'Mudança de etapa' },
+  transferencia: { icon: User,          color: '#0EA5E9', bg: '#0EA5E915', label: 'Transferência de dono' },
+  edicao:        { icon: Edit2,         color: '#6366F1', bg: '#6366F115', label: 'Edição' },
+  ganho:         { icon: Check,         color: '#12B981', bg: '#12B98115', label: 'Ganho' },
+  perdido:       { icon: X,             color: '#e1493c', bg: '#e1493c15', label: 'Perdido' },
+  criado:        { icon: Activity,      color: '#8B5CF6', bg: '#8B5CF615', label: 'Criado' },
 }
+
+// Available note types in the "Nota" tab — quick-select chips
+const NOTE_TYPES: Array<{ value: string; label: string; emoji: string }> = [
+  { value: 'nota',          label: 'Nota',           emoji: '📝' },
+  { value: 'ligacao',       label: 'Ligação',        emoji: '📞' },
+  { value: 'reuniao',       label: 'Reunião',        emoji: '🎯' },
+  { value: 'email_externo', label: 'E-mail externo', emoji: '✉️' },
+]
 
 function timeAgo(date: string) {
   const diff = Date.now() - new Date(date).getTime()
@@ -130,7 +141,13 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
 
   // Note
   const [noteText, setNoteText] = useState('')
+  const [noteType, setNoteType] = useState<string>('nota')
   const [addingNote, setAddingNote] = useState(false)
+
+  // Transfer ownership
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferTo, setTransferTo] = useState<string>('')
+  const [transferring, setTransferring] = useState(false)
 
   // Task
   const [newTaskTitle, setNewTaskTitle] = useState('')
@@ -215,33 +232,71 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
     setSaving(true)
     const supabase = createClient()
     const responsible = users.find(u => u.id === editResponsibleId)
+
+    // Diff fields for history logging
+    const changes: string[] = []
+    const fmt = (v: string | null | undefined) => v ? v : '—'
+    const newName = editName.trim() || lead.name
+    if (newName !== lead.name) changes.push(`Nome: "${lead.name}" → "${newName}"`)
+    const newCompany = editCompany.trim() || null
+    if (newCompany !== lead.company) changes.push(`Empresa: "${fmt(lead.company)}" → "${fmt(newCompany)}"`)
+    const newEmail = editEmail.trim() || null
+    if (newEmail !== lead.email) changes.push(`E-mail: "${fmt(lead.email)}" → "${fmt(newEmail)}"`)
+    const newPhone = editPhone.trim() || null
+    if (newPhone !== lead.phone) changes.push(`Telefone: "${fmt(lead.phone)}" → "${fmt(newPhone)}"`)
+    const newValue = editValue ? Number(editValue) : null
+    if (newValue !== lead.value) changes.push(`Valor: R$ ${lead.value ?? 0} → R$ ${newValue ?? 0}`)
+    const newCity = editCity.trim() || null
+    if (newCity !== lead.city) changes.push(`Cidade: "${fmt(lead.city)}" → "${fmt(newCity)}"`)
+    const newOrigin = editOrigin || null
+    if (newOrigin !== lead.origin) changes.push(`Origem: "${fmt(lead.origin)}" → "${fmt(newOrigin)}"`)
+    const newNext = editNextAction.trim() || null
+    if (newNext !== lead.next_action) changes.push(`Próxima ação: "${fmt(lead.next_action)}" → "${fmt(newNext)}"`)
+    if (editPriority !== lead.priority) {
+      const oldT = TEMP_CONFIG[lead.priority]?.label ?? lead.priority
+      const newT = TEMP_CONFIG[editPriority]?.label ?? editPriority
+      changes.push(`Temperatura: ${oldT} → ${newT}`)
+    }
+
+    const responsibleChanged = editResponsibleId !== (lead.responsible_id ?? '')
+
     const { error } = await supabase.from('leads').update({
-      name: editName.trim() || lead.name,
-      company: editCompany.trim() || null,
-      email: editEmail.trim() || null,
-      phone: editPhone.trim() || null,
+      name: newName,
+      company: newCompany,
+      email: newEmail,
+      phone: newPhone,
       whatsapp: editWhatsapp.trim() || null,
-      value: editValue ? Number(editValue) : null,
-      city: editCity.trim() || null,
-      origin: editOrigin || null,
-      next_action: editNextAction.trim() || null,
+      value: newValue,
+      city: newCity,
+      origin: newOrigin,
+      next_action: newNext,
       responsible_id: editResponsibleId || null,
       priority: editPriority,
     }).eq('id', lead.id)
 
     if (error) { toast.error(`Erro: ${error.message}`); setSaving(false); return }
 
+    // Log activities
+    if (changes.length > 0) {
+      await logActivity('edicao', `${changes.length} alteraç${changes.length === 1 ? 'ão' : 'ões'} no lead`, changes.join('\n'))
+    }
+    if (responsibleChanged) {
+      const newRespName = responsible?.full_name ?? '—'
+      const oldRespName = lead.responsible?.full_name ?? '—'
+      await logActivity('transferencia', `Transferiu para ${newRespName}`, `De ${oldRespName} → ${newRespName}`)
+    }
+
     setLead(prev => ({
       ...prev,
-      name: editName.trim() || lead.name,
-      company: editCompany.trim() || null,
-      email: editEmail.trim() || null,
-      phone: editPhone.trim() || null,
+      name: newName,
+      company: newCompany,
+      email: newEmail,
+      phone: newPhone,
       whatsapp: editWhatsapp.trim() || null,
-      value: editValue ? Number(editValue) : null,
-      city: editCity.trim() || null,
-      origin: editOrigin || null,
-      next_action: editNextAction.trim() || null,
+      value: newValue,
+      city: newCity,
+      origin: newOrigin,
+      next_action: newNext,
       responsible_id: editResponsibleId || null,
       priority: editPriority,
       responsible: responsible ? { id: responsible.id, full_name: responsible.full_name, avatar_url: responsible.avatar_url } : null,
@@ -254,11 +309,43 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
   const addNote = async () => {
     if (!noteText.trim()) return
     setAddingNote(true)
-    await logActivity('nota', 'Nota adicionada', noteText.trim())
+    const cfg = ACTIVITY_TYPE[noteType] ?? ACTIVITY_TYPE.nota
+    await logActivity(noteType, `${cfg.label} adicionada`, noteText.trim())
     setNoteText('')
     setAddingNote(false)
-    toast.success('Nota adicionada!')
+    toast.success(`${cfg.label} salva!`)
     setTab('historico')
+  }
+
+  const transferOwner = async () => {
+    if (!transferTo || transferTo === lead.responsible_id) {
+      toast.error('Escolha um responsável diferente do atual')
+      return
+    }
+    setTransferring(true)
+    const supabase = createClient()
+    const newResp = users.find(u => u.id === transferTo)
+    const oldResp = lead.responsible
+    const { error } = await supabase.from('leads').update({ responsible_id: transferTo }).eq('id', lead.id)
+    if (error) {
+      toast.error(`Erro: ${error.message}`)
+      setTransferring(false)
+      return
+    }
+    await logActivity(
+      'transferencia',
+      `Transferiu para ${newResp?.full_name ?? '—'}`,
+      oldResp ? `De ${oldResp.full_name ?? '—'} → ${newResp?.full_name ?? '—'}` : `Atribuído a ${newResp?.full_name ?? '—'}`,
+    )
+    setLead(prev => ({
+      ...prev,
+      responsible_id: transferTo,
+      responsible: newResp ? { id: newResp.id, full_name: newResp.full_name, avatar_url: newResp.avatar_url } : null,
+    }))
+    setEditResponsibleId(transferTo)
+    setShowTransfer(false)
+    setTransferring(false)
+    toast.success(`Lead transferido para ${newResp?.full_name ?? 'novo responsável'}`)
   }
 
   const addTask = async () => {
@@ -317,7 +404,7 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
 
   const TABS = [
     { value: 'historico' as const, label: 'Histórico', count: activities.length + 1 },
-    { value: 'notas' as const, label: 'Notas', count: activities.filter(a => a.type === 'nota').length },
+    { value: 'notas' as const, label: 'Notas', count: activities.filter(a => ['nota', 'ligacao', 'reuniao', 'email_externo'].includes(a.type ?? '')).length },
     { value: 'atividades' as const, label: 'Atividades', count: tasks.length },
     { value: 'emails' as const, label: 'E-mails', count: 0 },
     { value: 'arquivos' as const, label: 'Arquivos', count: 0 },
@@ -544,21 +631,27 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="flex items-center gap-2 pl-4.5">
+                <button
+                  type="button"
+                  onClick={() => { setTransferTo(lead.responsible_id ?? ''); setShowTransfer(true) }}
+                  className="flex items-center gap-2 pl-4.5 group text-left w-full hover:bg-muted/40 -mx-1 px-1 py-0.5 rounded-md transition-colors"
+                  title="Clique para transferir a oportunidade"
+                >
                   {lead.responsible ? (
                     <>
-                      <Avatar className="h-5 w-5">
+                      <Avatar className="h-5 w-5 ring-2 ring-transparent group-hover:ring-[#5B8CFF]/40 transition-all">
                         <AvatarImage src={lead.responsible.avatar_url ?? undefined} />
                         <AvatarFallback className="text-[8px] text-white" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
                           {(lead.responsible.full_name ?? 'U').charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       <span className="text-sm">{lead.responsible.full_name}</span>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 ml-auto transition-opacity" />
                     </>
                   ) : (
-                    <span className="text-sm text-muted-foreground/50 italic">—</span>
+                    <span className="text-sm text-[#5B8CFF] underline-offset-2 hover:underline">+ Atribuir responsável</span>
                   )}
-                </div>
+                </button>
               )}
             </div>
           </div>
@@ -657,11 +750,36 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
             {/* NOTAS */}
             {tab === 'notas' && (
               <div className="max-w-2xl space-y-4">
-                <div className="space-y-2">
+                <div className="space-y-2.5">
+                  {/* Type selector */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {NOTE_TYPES.map(nt => (
+                      <button
+                        key={nt.value}
+                        type="button"
+                        onClick={() => setNoteType(nt.value)}
+                        className={cn(
+                          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all',
+                          noteType === nt.value
+                            ? 'border-[#5B8CFF] bg-[#5B8CFF]/10 text-[#5B8CFF]'
+                            : 'border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/40'
+                        )}
+                      >
+                        <span>{nt.emoji}</span>
+                        {nt.label}
+                      </button>
+                    ))}
+                  </div>
+
                   <Textarea
                     value={noteText}
                     onChange={e => setNoteText(e.target.value)}
-                    placeholder="Escreva uma nota sobre este lead — contato feito, informações importantes, próximos passos..."
+                    placeholder={
+                      noteType === 'ligacao'  ? 'Registre o que conversaram na ligação...' :
+                      noteType === 'reuniao'  ? 'Anote os pontos discutidos na reunião...' :
+                      noteType === 'email_externo' ? 'Resumo do e-mail trocado por fora do CYCLO...' :
+                      'Escreva uma nota sobre este lead — contato feito, informações importantes, próximos passos...'
+                    }
                     className="min-h-[100px] text-sm resize-none"
                   />
                   <div className="flex justify-end">
@@ -673,32 +791,43 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
                       disabled={addingNote || !noteText.trim()}
                     >
                       {addingNote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                      Adicionar nota
+                      Salvar {NOTE_TYPES.find(n => n.value === noteType)?.label.toLowerCase()}
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-0 divide-y divide-border">
-                  {activities.filter(a => a.type === 'nota').map(act => (
-                    <div key={act.id} className="py-3">
-                      <div className="flex items-start gap-2 justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                          {act.user && (
-                            <Avatar className="h-5 w-5">
-                              <AvatarImage src={act.user.avatar_url ?? undefined} />
-                              <AvatarFallback className="text-[8px]" style={{ background: '#5B8CFF20', color: '#5B8CFF' }}>
-                                {(act.user.full_name ?? 'U').charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                          <span className="text-xs font-semibold">{act.user?.full_name ?? 'Sistema'}</span>
+                  {activities.filter(a => ['nota', 'ligacao', 'reuniao', 'email_externo'].includes(a.type ?? '')).map(act => {
+                    const cfg = ACTIVITY_TYPE[act.type ?? 'nota'] ?? ACTIVITY_TYPE.nota
+                    const Icon = cfg.icon
+                    return (
+                      <div key={act.id} className="py-3">
+                        <div className="flex items-start gap-2 justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            {act.user && (
+                              <Avatar className="h-5 w-5">
+                                <AvatarImage src={act.user.avatar_url ?? undefined} />
+                                <AvatarFallback className="text-[8px]" style={{ background: '#5B8CFF20', color: '#5B8CFF' }}>
+                                  {(act.user.full_name ?? 'U').charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span className="text-xs font-semibold">{act.user?.full_name ?? 'Sistema'}</span>
+                            <Badge
+                              className="text-[9px] border-0 px-1.5 py-0 gap-1 font-bold"
+                              style={{ background: cfg.bg, color: cfg.color }}
+                            >
+                              <Icon className="w-2.5 h-2.5" />
+                              {cfg.label}
+                            </Badge>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">{formatDate(act.created_at)}</span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground">{formatDate(act.created_at)}</span>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{act.description}</p>
                       </div>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{act.description}</p>
-                    </div>
-                  ))}
-                  {activities.filter(a => a.type === 'nota').length === 0 && (
+                    )
+                  })}
+                  {activities.filter(a => ['nota', 'ligacao', 'reuniao', 'email_externo'].includes(a.type ?? '')).length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-8">Nenhuma nota adicionada ainda.</p>
                   )}
                 </div>
@@ -860,6 +989,68 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
               >
                 {markingLost ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                 Confirmar perda
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer ownership dialog */}
+      <Dialog open={showTransfer} onOpenChange={setShowTransfer}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="w-4 h-4 text-[#0EA5E9]" /> Transferir oportunidade
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-1">
+            <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl">
+              <span className="text-xs font-semibold text-muted-foreground">DE</span>
+              {lead.responsible ? (
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={lead.responsible.avatar_url ?? undefined} />
+                    <AvatarFallback className="text-[10px] text-white" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                      {(lead.responsible.full_name ?? 'U').charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium">{lead.responsible.full_name}</span>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground italic">Sem responsável</span>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Novo responsável</Label>
+              <Select value={transferTo} onValueChange={v => v && setTransferTo(v)}>
+                <SelectTrigger className="h-10 text-sm">
+                  <span className={transferTo ? 'text-foreground' : 'text-muted-foreground'}>
+                    {users.find(u => u.id === transferTo)?.full_name ?? 'Selecione o novo dono...'}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto shrink-0 text-muted-foreground" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.filter(u => u.id !== lead.responsible_id).map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                A transferência será registrada no histórico e o novo responsável receberá uma notificação.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 text-sm" onClick={() => setShowTransfer(false)}>Cancelar</Button>
+              <Button
+                className="flex-1 text-white text-sm gap-1.5"
+                style={{ background: '#0EA5E9' }}
+                onClick={transferOwner}
+                disabled={transferring || !transferTo || transferTo === lead.responsible_id}
+              >
+                {transferring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                Transferir
               </Button>
             </div>
           </div>
