@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
 import {
   Moon, Sun, ChevronDown,
   LayoutDashboard, Users, Kanban, Bot, Settings,
@@ -56,6 +57,12 @@ export function Topbar({ userName, userEmail, userAvatar, notificationCount = 0 
   const { darkMode, toggleDarkMode } = useUIStore()
   const title = getPageTitle(pathname)
 
+  // Apply dark class to <html> based on store
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode)
+    document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light'
+  }, [darkMode])
+
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -78,7 +85,13 @@ export function Topbar({ userName, userEmail, userAvatar, notificationCount = 0 
       </div>
 
       {/* Dark mode toggle */}
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={toggleDarkMode}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors"
+        onClick={toggleDarkMode}
+        title={darkMode ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+      >
         {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
       </Button>
 

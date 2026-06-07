@@ -99,14 +99,13 @@ export function GlobalSearch() {
 
   return (
     <>
-      {/* Trigger button in topbar */}
+      {/* Trigger button in topbar — sleek, no keyboard hint */}
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 text-sm text-muted-foreground bg-muted/60 hover:bg-muted px-3 py-1.5 rounded-lg transition-colors min-w-[280px]"
+        className="hidden md:flex items-center gap-2.5 text-sm text-muted-foreground bg-muted/60 hover:bg-muted hover:text-foreground px-4 py-2 rounded-full transition-all min-w-[320px] border border-transparent hover:border-border"
       >
-        <Search className="w-3.5 h-3.5" />
+        <Search className="w-4 h-4 text-[#5B8CFF]" />
         <span className="flex-1 text-left">Buscar clientes, leads, empresas…</span>
-        <kbd className="text-[10px] bg-background border border-border rounded px-1 py-0.5 font-mono">⌘K</kbd>
       </button>
 
       {/* Mobile icon-only */}
