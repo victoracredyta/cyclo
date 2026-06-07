@@ -35,7 +35,6 @@ const PLAN_CONFIG: Record<string, { label: string; color: string; price: string;
       'Envio de Email com templates',
       'CYCLO IA — assistente inteligente',
       'Relatórios e Metas',
-      'Aprovações de conteúdo',
       'Automações de fluxo',
       'White Label — sua marca na plataforma',
       'Integrações (WordPress, Meta, Google)',

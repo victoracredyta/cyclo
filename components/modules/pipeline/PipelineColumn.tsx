@@ -26,19 +26,34 @@ export function PipelineColumn({ stage, leads, onAddLead, availableTags = [], on
 
   return (
     <div className="flex flex-col w-64 shrink-0">
-      {/* Column header */}
-      <div className="flex items-center justify-between mb-2.5 px-0.5">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
-          <span className="font-semibold text-sm">{stage.name}</span>
-          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{leads.length}</span>
+      {/* Colored top bar — bold stage identifier */}
+      <div
+        className="h-1.5 rounded-t-md mb-0"
+        style={{ backgroundColor: stage.color }}
+        aria-hidden
+      />
+
+      {/* Column header with tinted background */}
+      <div
+        className="flex items-center justify-between px-2.5 py-2 rounded-b-md mb-2"
+        style={{ backgroundColor: `${stage.color}12` }}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-bold text-sm truncate" style={{ color: stage.color }}>{stage.name}</span>
+          <span
+            className="text-[11px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+            style={{ backgroundColor: stage.color, color: '#fff' }}
+          >
+            {leads.length}
+          </span>
         </div>
-        <button onClick={onAddLead} className="text-muted-foreground hover:text-foreground p-0.5 rounded transition-colors">
-          <Plus className="w-3.5 h-3.5" />
+        <button onClick={onAddLead} className="opacity-60 hover:opacity-100 transition-opacity shrink-0" style={{ color: stage.color }}>
+          <Plus className="w-4 h-4" />
         </button>
       </div>
+
       {totalValue > 0 && (
-        <p className="text-xs text-muted-foreground mb-2.5 px-0.5">
+        <p className="text-xs font-semibold mb-2 px-1" style={{ color: stage.color }}>
           R$ {totalValue.toLocaleString('pt-BR')}
         </p>
       )}
@@ -47,9 +62,10 @@ export function PipelineColumn({ stage, leads, onAddLead, availableTags = [], on
       <div
         ref={setNodeRef}
         className={cn(
-          'flex-1 flex flex-col gap-2 p-2 rounded-xl min-h-[200px] transition-colors',
-          isOver ? 'bg-[#5B8CFF]/8 ring-1 ring-[#5B8CFF]/30' : 'bg-muted/40'
+          'flex-1 flex flex-col gap-2 p-2 rounded-xl min-h-[200px] transition-all border-2 border-dashed',
+          isOver ? 'border-current bg-current/5' : 'border-transparent bg-muted/40'
         )}
+        style={isOver ? { color: stage.color } : undefined}
       >
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.map(lead => (
