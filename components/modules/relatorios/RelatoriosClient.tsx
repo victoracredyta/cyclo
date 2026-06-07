@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getUserName } from '@/lib/userDisplay'
+import { DropdownPortal } from '@/components/common/DropdownPortal'
 
 type ClientRow = {
   id: string; name: string; mrr: number; status: string;
@@ -921,19 +922,10 @@ window.addEventListener('load', () => {
   )
 }
 
-// ─── ExportMenu — dropdown with Excel / PDF / HTML ─────────────────
+// ─── ExportMenu — dropdown with Excel / PDF / HTML (portal-based) ──
 function ExportMenu({ onExcel, onPdf, onHtml }: { onExcel: () => void; onPdf: () => void; onHtml: () => void }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const items = [
     {
@@ -960,8 +952,9 @@ function ExportMenu({ onExcel, onPdf, onHtml }: { onExcel: () => void; onPdf: ()
   ]
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <Button
+        ref={triggerRef}
         variant="outline"
         size="sm"
         onClick={() => setOpen(o => !o)}
@@ -971,33 +964,38 @@ function ExportMenu({ onExcel, onPdf, onHtml }: { onExcel: () => void; onPdf: ()
         <ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
       </Button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-border bg-muted/30">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Escolha o formato</p>
-          </div>
-          <div className="py-1">
-            {items.map(item => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.title}
-                  onClick={() => { item.onClick(); setOpen(false) }}
-                  className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors text-left group"
-                >
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-110" style={{ background: `${item.color}15` }}>
-                    <Icon className="w-4 h-4" style={{ color: item.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold leading-tight">{item.title}</p>
-                    <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{item.desc}</p>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+      <DropdownPortal
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        width={320}
+        align="right"
+        maxHeight={280}
+      >
+        <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Escolha o formato</p>
         </div>
-      )}
-    </div>
+        <div className="py-1">
+          {items.map(item => {
+            const Icon = item.icon
+            return (
+              <button
+                key={item.title}
+                onClick={() => { item.onClick(); setOpen(false) }}
+                className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors text-left group"
+              >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-110" style={{ background: `${item.color}15` }}>
+                  <Icon className="w-4 h-4" style={{ color: item.color }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold leading-tight">{item.title}</p>
+                  <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{item.desc}</p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </DropdownPortal>
+    </>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -16,6 +16,7 @@ import {
 import { Plus, Search, Filter, X, Users, CalendarDays, Kanban, ChevronDown, Check, Settings, DollarSign, Trophy, TrendingUp, Pause, Banknote, UserCircle2 } from 'lucide-react'
 import { getUserName } from '@/lib/userDisplay'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { DropdownPortal } from '@/components/common/DropdownPortal'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -67,6 +68,8 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
   const [leads, setLeads] = useState(initialLeads)
   const [funnels] = useState(initialFunnels)
   const [showMembersDropdown, setShowMembersDropdown] = useState(false)
+  const funnelTriggerRef = useRef<HTMLButtonElement>(null)
+  const membersTriggerRef = useRef<HTMLButtonElement>(null)
   const [search, setSearch] = useState('')
   const [activeId, setActiveId] = useState<string | null>(null)
   const [showNewLead, setShowNewLead] = useState(false)
@@ -254,49 +257,52 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
 
             {/* Funnel selector */}
             {funnels.length > 0 && (
-              <div className="relative shrink-0">
+              <>
                 <button
+                  ref={funnelTriggerRef}
                   onClick={() => setShowFunnelDropdown(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold hover:border-[#5B8CFF]/40 transition-colors whitespace-nowrap max-w-[260px]"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold hover:border-[#5B8CFF]/40 transition-colors whitespace-nowrap max-w-[260px] shrink-0"
                 >
                   <Kanban className="w-3.5 h-3.5 text-[#5B8CFF] shrink-0" />
                   <span className="truncate">{selectedFunnelId === 'all' ? 'Todos os funis' : (selectedFunnel?.name ?? 'Funil')}</span>
                   <ChevronDown className={cn('w-3 h-3 text-muted-foreground shrink-0 transition-transform', showFunnelDropdown && 'rotate-180')} />
                 </button>
 
-                {showFunnelDropdown && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowFunnelDropdown(false)} />
-                    <div className="absolute left-0 top-10 z-50 bg-card border border-border rounded-xl shadow-2xl p-1.5 min-w-[260px] max-h-[400px] overflow-y-auto">
-                      <button
-                        onClick={() => { setSelectedFunnelId('all'); setShowFunnelDropdown(false) }}
-                        className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === 'all' && 'font-semibold text-[#5B8CFF] bg-[#5B8CFF]/5')}
-                      >
-                        {selectedFunnelId === 'all' ? <Check className="w-3 h-3 text-[#5B8CFF] shrink-0" /> : <span className="w-3 shrink-0" />}
-                        <span className="truncate">Todos os funis</span>
+                <DropdownPortal
+                  open={showFunnelDropdown}
+                  onClose={() => setShowFunnelDropdown(false)}
+                  triggerRef={funnelTriggerRef}
+                  width={280}
+                  maxHeight={420}
+                  className="p-1.5"
+                >
+                  <button
+                    onClick={() => { setSelectedFunnelId('all'); setShowFunnelDropdown(false) }}
+                    className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === 'all' && 'font-semibold text-[#5B8CFF] bg-[#5B8CFF]/5')}
+                  >
+                    {selectedFunnelId === 'all' ? <Check className="w-3 h-3 text-[#5B8CFF] shrink-0" /> : <span className="w-3 shrink-0" />}
+                    <span className="truncate">Todos os funis</span>
+                  </button>
+                  {funnels.map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setSelectedFunnelId(f.id); setShowFunnelDropdown(false) }}
+                      className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === f.id && 'font-semibold text-[#5B8CFF] bg-[#5B8CFF]/5')}
+                    >
+                      {selectedFunnelId === f.id ? <Check className="w-3 h-3 text-[#5B8CFF] shrink-0" /> : <span className="w-3 shrink-0" />}
+                      <span className="truncate flex-1">{f.name}</span>
+                      {f.is_default && <span className="text-[9px] text-[#12B981] font-bold shrink-0 px-1 py-0.5 rounded bg-[#12B981]/10">PADRÃO</span>}
+                    </button>
+                  ))}
+                  <div className="border-t border-border mt-1 pt-1">
+                    <Link href="/configuracoes" onClick={() => setShowFunnelDropdown(false)}>
+                      <button className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left text-muted-foreground hover:bg-muted transition-colors">
+                        <Settings className="w-3 h-3" /> Gerenciar funis
                       </button>
-                      {funnels.map(f => (
-                        <button
-                          key={f.id}
-                          onClick={() => { setSelectedFunnelId(f.id); setShowFunnelDropdown(false) }}
-                          className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === f.id && 'font-semibold text-[#5B8CFF] bg-[#5B8CFF]/5')}
-                        >
-                          {selectedFunnelId === f.id ? <Check className="w-3 h-3 text-[#5B8CFF] shrink-0" /> : <span className="w-3 shrink-0" />}
-                          <span className="truncate flex-1">{f.name}</span>
-                          {f.is_default && <span className="text-[9px] text-[#12B981] font-bold shrink-0 px-1 py-0.5 rounded bg-[#12B981]/10">PADRÃO</span>}
-                        </button>
-                      ))}
-                      <div className="border-t border-border mt-1 pt-1">
-                        <Link href="/configuracoes" onClick={() => setShowFunnelDropdown(false)}>
-                          <button className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left text-muted-foreground hover:bg-muted transition-colors">
-                            <Settings className="w-3 h-3" /> Gerenciar funis
-                          </button>
-                        </Link>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+                    </Link>
+                  </div>
+                </DropdownPortal>
+              </>
             )}
 
             {/* Responsáveis do funil — ao lado do funil */}
@@ -306,10 +312,11 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
               const visibleAvatars = members.slice(0, 3)
               const extra = members.length - visibleAvatars.length
               return (
-                <div className="relative shrink-0">
+                <>
                   <button
+                    ref={membersTriggerRef}
                     onClick={() => setShowMembersDropdown(v => !v)}
-                    className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-lg border border-border bg-card text-xs font-semibold hover:border-[#5B8CFF]/40 transition-colors"
+                    className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-lg border border-border bg-card text-xs font-semibold hover:border-[#5B8CFF]/40 transition-colors shrink-0"
                     title="Responsáveis com acesso a este funil"
                   >
                     {members.length === 0 ? (
@@ -336,48 +343,50 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
                     <ChevronDown className={cn('w-3 h-3 text-muted-foreground transition-transform', showMembersDropdown && 'rotate-180')} />
                   </button>
 
-                  {showMembersDropdown && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setShowMembersDropdown(false)} />
-                      <div className="absolute left-0 top-10 z-50 bg-card border border-border rounded-xl shadow-2xl p-2 min-w-[260px]">
-                        <div className="px-1.5 py-1 border-b border-border mb-1">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                            Responsáveis do funil
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            Quem tem acesso a este pipeline
-                          </p>
-                        </div>
-                        {members.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center py-4 px-2">
-                            Nenhum usuário atribuído. Qualquer um pode ver este funil.
-                          </p>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {members.map(u => (
-                              <div key={u.id} className="flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-muted/40 transition-colors">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarImage src={u.avatar_url ?? undefined} />
-                                  <AvatarFallback className="text-[9px] bg-[#5B8CFF] text-white">
-                                    {(u.full_name?.trim() || 'U').charAt(0)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="text-xs font-medium flex-1 truncate">{u.full_name?.trim() || 'Sem nome'}</span>
-                              </div>
-                            ))}
+                  <DropdownPortal
+                    open={showMembersDropdown}
+                    onClose={() => setShowMembersDropdown(false)}
+                    triggerRef={membersTriggerRef}
+                    width={280}
+                    maxHeight={420}
+                    className="p-2"
+                  >
+                    <div className="px-1.5 py-1 border-b border-border mb-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Responsáveis do funil
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Quem tem acesso a este pipeline
+                      </p>
+                    </div>
+                    {members.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4 px-2">
+                        Nenhum usuário atribuído. Qualquer um pode ver este funil.
+                      </p>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {members.map(u => (
+                          <div key={u.id} className="flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-muted/40 transition-colors">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={u.avatar_url ?? undefined} />
+                              <AvatarFallback className="text-[9px] bg-[#5B8CFF] text-white">
+                                {(u.full_name?.trim() || 'U').charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs font-medium flex-1 truncate">{u.full_name?.trim() || 'Sem nome'}</span>
                           </div>
-                        )}
-                        <div className="border-t border-border mt-1 pt-1">
-                          <Link href="/configuracoes" onClick={() => setShowMembersDropdown(false)}>
-                            <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-[#5B8CFF] hover:bg-[#5B8CFF]/8 transition-colors">
-                              <Settings className="w-3 h-3" /> Gerenciar responsáveis
-                            </button>
-                          </Link>
-                        </div>
+                        ))}
                       </div>
-                    </>
-                  )}
-                </div>
+                    )}
+                    <div className="border-t border-border mt-1 pt-1">
+                      <Link href="/configuracoes" onClick={() => setShowMembersDropdown(false)}>
+                        <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-[#5B8CFF] hover:bg-[#5B8CFF]/8 transition-colors">
+                          <Settings className="w-3 h-3" /> Gerenciar responsáveis
+                        </button>
+                      </Link>
+                    </div>
+                  </DropdownPortal>
+                </>
               )
             })()}
           </div>
