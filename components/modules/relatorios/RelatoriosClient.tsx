@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type ClientRow = { id: string; name: string; mrr: number; health_score: number; status: string; created_at: string }
+type ClientRow = { id: string; name: string; mrr: number; status: string; created_at: string }
 type LeadRow = { id: string; value: number | null; stage_id: string | null; won_at: string | null; lost_at: string | null; created_at: string }
 type ContentRow = { id: string; status: string; channel: string | null; created_at: string }
 type ApprovalRow = { id: string; status: string; created_at: string }
@@ -112,21 +112,7 @@ export function RelatoriosClient({ clients, leads, contentItems, approvals, auto
     return Object.entries(map).map(([name, value]) => ({ name, value, fill: STATUS_COLORS[name] ?? '#6B7280' }))
   }, [clients])
 
-  const healthDistribution = useMemo(() => {
-    const ranges = [
-      { label: '0–40', count: 0, fill: '#e1493c' },
-      { label: '41–70', count: 0, fill: '#F59E0B' },
-      { label: '71–100', count: 0, fill: '#12B981' },
-    ]
-    clients.forEach(c => {
-      if (c.health_score <= 40) ranges[0].count++
-      else if (c.health_score <= 70) ranges[1].count++
-      else ranges[2].count++
-    })
-    return ranges
-  }, [clients])
-
-  const exportPDF = () => {
+const exportPDF = () => {
     const w = window.open('', '_blank')!
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório CYCLO — ${new Date().toLocaleDateString('pt-BR')}</title>
     <style>body{font-family:Arial,sans-serif;padding:40px;color:#111;max-width:900px;margin:0 auto}h1{color:#5B8CFF;border-bottom:2px solid #5B8CFF;padding-bottom:8px}h2{color:#333;margin-top:32px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#5B8CFF;color:white;padding:8px 12px;text-align:left;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #eee;font-size:13px}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:16px 0}.kpi{background:#f8f9ff;border:1px solid #e8eeff;border-radius:8px;padding:16px}.kpi-value{font-size:24px;font-weight:bold;color:#5B8CFF}.kpi-label{font-size:11px;color:#666;margin-top:4px}@media print{body{padding:20px}}</style></head><body>
@@ -139,8 +125,8 @@ export function RelatoriosClient({ clients, leads, contentItems, approvals, auto
       <div class="kpi"><div class="kpi-value">R$ ${wonRevenue.toLocaleString('pt-BR')}</div><div class="kpi-label">Receita Fechada</div></div>
     </div>
     <h2>Clientes</h2>
-    <table><tr><th>Nome</th><th>Status</th><th>MRR</th><th>Health Score</th></tr>
-    ${clients.map(c => `<tr><td>${c.name}</td><td>${c.status}</td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td><td>${c.health_score}%</td></tr>`).join('')}
+    <table><tr><th>Nome</th><th>Status</th><th>MRR</th></tr>
+    ${clients.map(c => `<tr><td>${c.name}</td><td>${c.status}</td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td></tr>`).join('')}
     </table>
     <h2>Pipeline</h2>
     <table><tr><th>Lead</th><th>Valor</th><th>Status</th></tr>
@@ -167,10 +153,10 @@ export function RelatoriosClient({ clients, leads, contentItems, approvals, auto
       <div class="kpi"><div class="kpi-value">${totalRuns}</div><div class="kpi-label">Execuções Automação</div></div>
     </div>
     <div class="section"><h2>Clientes</h2>
-    <table><tr><th>Nome</th><th>Status</th><th>MRR</th><th>Health Score</th></tr>
+    <table><tr><th>Nome</th><th>Status</th><th>MRR</th></tr>
     ${clients.map(c => {
       const badgeClass = c.status === 'Ativo' ? 'green' : c.status === 'Em risco' ? 'red' : 'gray'
-      return `<tr><td>${c.name}</td><td><span class="badge ${badgeClass}">${c.status}</span></td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td><td>${c.health_score}%</td></tr>`
+      return `<tr><td>${c.name}</td><td><span class="badge ${badgeClass}">${c.status}</span></td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td></tr>`
     }).join('')}</table></div>
     <footer>Gerado pelo CYCLO · ${new Date().toLocaleString('pt-BR')}</footer></body></html>`
 
@@ -382,32 +368,6 @@ export function RelatoriosClient({ clients, leads, contentItems, approvals, auto
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Health distribution */}
-        <Card className="border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Distribuição de Health Score</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-2">
-            {healthDistribution.map(range => (
-              <div key={range.label} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full" style={{ background: range.fill }} />
-                    <span>{range.label}%</span>
-                  </div>
-                  <span className="font-semibold">{range.count} clientes</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: clients.length > 0 ? `${(range.count / clients.length) * 100}%` : '0%', background: range.fill }}
-                  />
-                </div>
-              </div>
-            ))}
           </CardContent>
         </Card>
 

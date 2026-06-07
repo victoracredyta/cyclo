@@ -11,7 +11,7 @@ export default async function RelatoriosPage() {
     { data: approvals },
     { data: automations },
   ] = await Promise.all([
-    supabase.from('clients').select('id, name, mrr, health_score, status, created_at').order('created_at'),
+    supabase.from('clients').select('id, name, mrr, status, created_at').order('created_at'),
     supabase.from('leads').select('id, value, stage_id, won_at, lost_at, created_at').order('created_at'),
     supabase.from('content_items').select('id, status, channel, created_at').order('created_at'),
     supabase.from('approvals').select('id, status, created_at').order('created_at'),

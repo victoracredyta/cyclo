@@ -12,7 +12,7 @@ export default async function DashboardPage() {
     { data: goals },
     { data: automations },
   ] = await Promise.all([
-    supabase.from('clients').select('id, name, mrr, health_score, status').order('mrr', { ascending: false }),
+    supabase.from('clients').select('id, name, mrr, status').order('mrr', { ascending: false }),
     supabase.from('leads').select('id, name, value, stage_id, won_at, lost_at, created_at').is('won_at', null).is('lost_at', null),
     supabase.from('approvals').select('id, status, client_id').in('status', ['aguardando']),
     supabase.from('pipeline_stages').select('id, name, color, order_index').order('order_index'),
@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   ])
 
   const activeClients = clients?.filter(c => c.status === 'Ativo') ?? []
-  const riskClients = clients?.filter(c => c.health_score < 50) ?? []
+  const riskClients: Array<{ id: string; name: string }> = []
   const mrr = activeClients.reduce((s, c) => s + (c.mrr ?? 0), 0)
   const pipelineValue = leads?.reduce((s, l) => s + (l.value ?? 0), 0) ?? 0
 

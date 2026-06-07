@@ -73,12 +73,6 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   task: <Clock className="w-3.5 h-3.5" />,
 }
 
-function healthColor(score: number) {
-  if (score >= 70) return '#12B981'
-  if (score >= 40) return '#F59E0B'
-  return '#EF4444'
-}
-
 function avatarBg(name: string) {
   const colors = ['#5B8CFF', '#12B981', '#F59E0B', '#8B5CF6', '#e1493c', '#2563EB']
   return colors[name.charCodeAt(0) % colors.length]

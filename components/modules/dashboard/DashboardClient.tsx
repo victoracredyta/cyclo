@@ -24,7 +24,7 @@ interface PipelineStageData {
 interface DashboardClientProps {
   mrr: number
   activeClientsCount: number
-  riskClients: Array<{ id: string; name: string; health_score: number }>
+  riskClients: Array<{ id: string; name: string }>
   pendingApprovals: number
   pipelineValue: number
   openLeadsCount: number
