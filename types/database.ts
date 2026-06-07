@@ -96,6 +96,7 @@ export interface Database {
         name: string
         description: string | null
         is_default: boolean
+        is_hidden: boolean
         created_at: string
       }>
       funnel_users: TableDef<{

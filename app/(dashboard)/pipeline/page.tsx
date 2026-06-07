@@ -26,11 +26,11 @@ export default async function PipelinePage() {
   )
 
   // If a funnel has no funnel_users entries at all, show it to everyone
-  const allFunnelIds = new Set((funnelRows ?? []).map(f => f.id))
   const funnelsWithUsers = new Set((funnel_users ?? []).map(fu => fu.funnel_id))
-  const funnels = (funnelRows ?? []).filter(f =>
-    visibleFunnelIds.has(f.id) || !funnelsWithUsers.has(f.id)
-  )
+  const funnels = (funnelRows ?? [])
+    // hide funnels flagged as hidden by the user in Configurações
+    .filter(f => !(f as { is_hidden?: boolean }).is_hidden)
+    .filter(f => visibleFunnelIds.has(f.id) || !funnelsWithUsers.has(f.id))
 
   return (
     <PipelineBoard

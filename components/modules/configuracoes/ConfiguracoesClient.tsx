@@ -18,7 +18,7 @@ import {
   User, Users, Bell, Shield, LogOut, Plus, Mail,
   Kanban, Trash2, GripVertical, Link2, Tag, Shuffle,
   Building2, Edit3, Check, X, ChevronDown, ChevronRight, RotateCcw,
-  Camera, Loader2, Copy, Search,
+  Camera, Loader2, Copy, Search, Eye, EyeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -82,6 +82,7 @@ interface Funnel {
   name: string
   description: string | null
   is_default: boolean
+  is_hidden: boolean
   stages: FunnelStage[]
   user_ids: string[]
 }
@@ -195,6 +196,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
       name: f.name,
       description: f.description,
       is_default: f.is_default,
+      is_hidden: (f as { is_hidden?: boolean }).is_hidden ?? false,
       stages: (stageRows ?? []).filter(s => s.funnel_id === f.id),
       user_ids: (fuRows ?? []).filter(fu => fu.funnel_id === f.id).map(fu => fu.user_id),
     }))
@@ -239,7 +241,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     if (userIdsToInsert.length > 0) {
       await supabase.from('funnel_users').insert(userIdsToInsert.map(uid => ({ funnel_id: f.id, user_id: uid })))
     }
-    const newF: Funnel = { id: f.id, name: f.name, description: f.description, is_default: f.is_default, stages: [], user_ids: userIdsToInsert }
+    const newF: Funnel = { id: f.id, name: f.name, description: f.description, is_default: f.is_default, is_hidden: false, stages: [], user_ids: userIdsToInsert }
     setFunnels(prev => [...prev, newF])
     setNewFunnelName(''); setNewFunnelDesc(''); setNewFunnelDefault(false); setNewFunnelUserIds([])
     setShowNewFunnel(false)
@@ -265,11 +267,25 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   }
 
   const deleteFunnel = async (id: string) => {
+    const f = funnels.find(x => x.id === id)
+    if (!f) return
+    if (!confirm(`Excluir o funil "${f.name}"? Todas as etapas e leads vinculados perderão a referência.`)) return
     const supabase = createClient()
     const { error } = await supabase.from('funnels').delete().eq('id', id)
     if (error) { toast.error('Erro ao remover funil'); return }
     setFunnels(prev => prev.filter(f => f.id !== id))
     toast.success('Funil removido')
+  }
+
+  const toggleFunnelHidden = async (id: string) => {
+    const f = funnels.find(x => x.id === id)
+    if (!f) return
+    const next = !f.is_hidden
+    const supabase = createClient()
+    const { error } = await supabase.from('funnels').update({ is_hidden: next }).eq('id', id)
+    if (error) { toast.error('Erro ao atualizar visibilidade'); return }
+    setFunnels(prev => prev.map(x => x.id === id ? { ...x, is_hidden: next } : x))
+    toast.success(next ? `Funil "${f.name}" ocultado do Pipeline` : `Funil "${f.name}" visível no Pipeline`)
   }
 
   const addFunnelStage = async (funnelId: string, stageName?: string) => {
@@ -676,26 +692,46 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                 .map(f => {
                   const stageInput = stageInputByFunnel[f.id] ?? ''
                   return (
-                    <div key={f.id} className="w-72 flex flex-col bg-card border border-border rounded-xl overflow-hidden shrink-0 shadow-sm">
+                    <div key={f.id} className={cn(
+                      'w-72 flex flex-col bg-card border rounded-xl overflow-hidden shrink-0 shadow-sm transition-opacity',
+                      f.is_hidden ? 'border-dashed border-muted-foreground/40 opacity-60' : 'border-border'
+                    )}>
                       {/* Column header */}
                       <div className="px-3 pt-3 pb-2 border-b border-border">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] text-muted-foreground font-medium">{f.stages.length} etapa{f.stages.length !== 1 ? 's' : ''} · {f.user_ids.length} usuário{f.user_ids.length !== 1 ? 's' : ''}</span>
                           <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => toggleFunnelHidden(f.id)}
+                              title={f.is_hidden ? 'Mostrar no Pipeline' : 'Ocultar do Pipeline'}
+                              className="p-1.5 text-white rounded transition-colors"
+                              style={{ background: f.is_hidden ? '#64748B' : '#F59E0B' }}
+                            >
+                              {f.is_hidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
                             <button onClick={() => setEditingFunnel({ ...f })} title="Editar funil" className="p-1.5 text-white rounded transition-colors" style={{ background: '#12B981' }}>
                               <Edit3 className="w-3 h-3" />
                             </button>
-                            {!f.is_default && (
-                              <button onClick={() => deleteFunnel(f.id)} title="Excluir funil" className="p-1.5 text-white rounded transition-colors" style={{ background: '#e1493c' }}>
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => f.is_default ? toast.error('Funil padrão não pode ser excluído. Ative outro como padrão antes.') : deleteFunnel(f.id)}
+                              title={f.is_default ? 'Funil padrão — promova outro a padrão antes de excluir' : 'Excluir funil'}
+                              className={cn(
+                                'p-1.5 text-white rounded transition-colors',
+                                f.is_default && 'opacity-50 cursor-not-allowed'
+                              )}
+                              style={{ background: '#e1493c' }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
                         </div>
                         <p className="font-bold text-sm text-foreground leading-tight">{f.name}</p>
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           {f.is_default && (
                             <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-[#12B981]/15 text-[#12B981]">Padrão</span>
+                          )}
+                          {f.is_hidden && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-[#F59E0B]/15 text-[#F59E0B]">Oculto</span>
                           )}
                           {f.description && (
                             <span className="text-[9px] text-muted-foreground truncate max-w-[160px]">{f.description}</span>
