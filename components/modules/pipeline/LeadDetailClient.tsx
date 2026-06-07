@@ -19,9 +19,10 @@ import {
   MapPin, DollarSign, Flame, Target, ChevronDown, Plus, Loader2,
   MessageSquare, CheckSquare, FileText, Calendar, ExternalLink,
   Activity, ArrowRight, User, Search, Trash2, Square, AlertTriangle,
-  Upload, Download, File as FileIcon, Image as ImageIcon, FileSpreadsheet, Send,
+  Upload, Download, File as FileIcon, Image as ImageIcon, FileSpreadsheet, Send, Trophy,
 } from 'lucide-react'
 import type { Lead, PipelineStage, Activity as ActivityType, LeadTask, LeadFile, LeadEmail } from '@/types/database'
+import { ConvertLeadModal } from './ConvertLeadModal'
 
 type Responsible = { id: string; full_name: string | null; avatar_url: string | null }
 type LeadFull = Lead & { responsible: Responsible | null }
@@ -162,6 +163,9 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
   const [transferTo, setTransferTo] = useState<string>('')
   const [transferring, setTransferring] = useState(false)
 
+  // Convert to client (Ganho flow)
+  const [showConvert, setShowConvert] = useState(false)
+
   // Task
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskDue, setNewTaskDue] = useState('')
@@ -223,12 +227,8 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
   }
 
   const markWon = async () => {
-    setMarkingWon(true)
-    const supabase = createClient()
-    await supabase.from('leads').update({ won_at: new Date().toISOString() }).eq('id', lead.id)
-    await logActivity('ganho', '🎉 Lead marcado como Ganho!')
-    toast.success('Parabéns! Lead ganho!')
-    router.push('/pipeline')
+    // Open convert modal instead of just marking won — user fills client data first
+    setShowConvert(true)
   }
 
   const markLost = async () => {
@@ -560,7 +560,16 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
         )}
         <div className="ml-auto flex items-center gap-2">
           {lead.won_at ? (
-            <Badge className="bg-[#12B981]/15 text-[#12B981] border-0 text-xs">✓ Ganho</Badge>
+            <>
+              <Badge className="bg-[#12B981]/15 text-[#12B981] border-0 text-xs">✓ Ganho</Badge>
+              <Button
+                size="sm"
+                className="bg-[#12B981] hover:bg-[#059669] text-white gap-1.5 text-xs h-8"
+                onClick={() => setShowConvert(true)}
+              >
+                <Trophy className="w-3.5 h-3.5" /> Converter em cliente
+              </Button>
+            </>
           ) : lead.lost_at ? (
             <Badge className="bg-red-100 text-red-600 border-0 text-xs dark:bg-red-950/30 dark:text-red-400">✗ Perdido</Badge>
           ) : (
@@ -571,8 +580,8 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
                 onClick={markWon}
                 disabled={markingWon}
               >
-                {markingWon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                Ganho
+                {markingWon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trophy className="w-3.5 h-3.5" />}
+                Ganho — Criar cliente
               </Button>
               <Button
                 size="sm"
@@ -1249,6 +1258,15 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Convert to client modal */}
+      {showConvert && (
+        <ConvertLeadModal
+          lead={lead}
+          onClose={() => setShowConvert(false)}
+          onConverted={() => { setShowConvert(false); /* navigation handled inside modal */ }}
+        />
+      )}
 
       {/* Transfer ownership dialog */}
       <Dialog open={showTransfer} onOpenChange={setShowTransfer}>

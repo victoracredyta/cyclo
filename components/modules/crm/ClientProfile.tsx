@@ -96,7 +96,10 @@ function timeAgo(d: string) {
 /* ── types ────────────────────────────────────────────────────── */
 
 interface ClientProfileProps {
-  client: Client & { responsible: { id: string; full_name: string | null; avatar_url: string | null } | null }
+  client: Client & {
+    responsible: { id: string; full_name: string | null; avatar_url: string | null } | null
+    origin_lead?: { id: string; name: string | null; company: string | null } | null
+  }
   contacts: ClientContact[]
   activities: Array<Activity & { user: { full_name: string | null; avatar_url: string | null } | null }>
   approvals: Array<Pick<Approval, 'id' | 'title' | 'status' | 'due_date' | 'channel' | 'type' | 'created_at'>>
@@ -405,6 +408,28 @@ export function ClientProfile({
       <Link href="/crm" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground w-fit transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" /> Voltar para clientes
       </Link>
+
+      {/* Origin banner — when client was converted from a lead */}
+      {client.origin_lead && (
+        <Link
+          href={`/pipeline/${client.origin_lead.id}`}
+          className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-[#12B981]/30 bg-gradient-to-r from-[#12B981]/8 to-transparent hover:border-[#12B981]/50 transition-colors group"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-[#12B981]/15 flex items-center justify-center shrink-0">
+              <Star className="w-3.5 h-3.5 text-[#12B981]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-[#12B981]">Cliente vindo do Pipeline</p>
+              <p className="text-[11px] text-muted-foreground truncate">
+                Lead origem: <span className="font-semibold">{client.origin_lead.name}</span>
+                {client.origin_lead.company && ` — ${client.origin_lead.company}`} · histórico completo herdado
+              </p>
+            </div>
+          </div>
+          <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-[#12B981] transition-colors shrink-0" />
+        </Link>
+      )}
 
       {/* Header card — compacto e premium */}
       <Card className="border-border shadow-sm overflow-hidden">

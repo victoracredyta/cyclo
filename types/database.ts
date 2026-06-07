@@ -64,6 +64,7 @@ export interface Database {
         services: string[]
         portal_password: string | null
         portal_enabled: boolean
+        originated_from_lead_id: string | null
         created_at: string
       }>
       client_contacts: TableDef<{
