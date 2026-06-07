@@ -16,6 +16,8 @@ export default async function LeadDetailPage({
     { data: activities },
     { data: tasks },
     { data: users },
+    { data: files },
+    { data: emails },
   ] = await Promise.all([
     supabase
       .from('leads')
@@ -34,6 +36,16 @@ export default async function LeadDetailPage({
       .eq('lead_id', leadId)
       .order('created_at'),
     supabase.from('users').select('id, full_name, avatar_url').eq('is_active', true),
+    supabase
+      .from('lead_files')
+      .select('*, uploader:uploaded_by(id, full_name, avatar_url)')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('lead_emails')
+      .select('*, sender:sent_by(id, full_name, avatar_url)')
+      .eq('lead_id', leadId)
+      .order('sent_at', { ascending: false }),
   ])
 
   if (!lead) notFound()
@@ -45,6 +57,8 @@ export default async function LeadDetailPage({
       activities={(activities ?? []) as Parameters<typeof LeadDetailClient>[0]['activities']}
       tasks={(tasks ?? []) as Parameters<typeof LeadDetailClient>[0]['tasks']}
       users={users ?? []}
+      files={(files ?? []) as Parameters<typeof LeadDetailClient>[0]['files']}
+      emails={(emails ?? []) as Parameters<typeof LeadDetailClient>[0]['emails']}
     />
   )
 }

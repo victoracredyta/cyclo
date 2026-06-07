@@ -172,12 +172,28 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
       if (overLead) targetStageId = overLead.stage_id
     }
     if (!targetStageId || targetStageId === lead.stage_id) return
+    const oldStage = stages.find(s => s.id === lead.stage_id)
+    const newStage = stages.find(s => s.id === targetStageId)
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage_id: targetStageId } : l))
     const supabase = createClient()
     const { error } = await supabase.from('leads').update({ stage_id: targetStageId }).eq('id', leadId)
     if (error) {
       toast.error('Erro ao mover lead')
       setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage_id: lead.stage_id } : l))
+      return
+    }
+    // Log drag-and-drop movement to activity history (fire-and-forget)
+    try {
+      const { data: me } = await supabase.from('users').select('id').single()
+      await supabase.from('activities').insert({
+        organization_id: lead.organization_id,
+        lead_id: leadId,
+        user_id: me?.id,
+        type: 'stage_change',
+        title: `Mudou de etapa: ${oldStage?.name ?? '—'} → ${newStage?.name ?? '—'}`,
+      })
+    } catch {
+      // non-blocking — UI movement already done
     }
   }, [leads, stages])
 

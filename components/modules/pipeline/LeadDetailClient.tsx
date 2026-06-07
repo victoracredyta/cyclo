@@ -19,13 +19,16 @@ import {
   MapPin, DollarSign, Flame, Target, ChevronDown, Plus, Loader2,
   MessageSquare, CheckSquare, FileText, Calendar, ExternalLink,
   Activity, ArrowRight, User, Search, Trash2, Square, AlertTriangle,
+  Upload, Download, File as FileIcon, Image as ImageIcon, FileSpreadsheet, Send,
 } from 'lucide-react'
-import type { Lead, PipelineStage, Activity as ActivityType, LeadTask } from '@/types/database'
+import type { Lead, PipelineStage, Activity as ActivityType, LeadTask, LeadFile, LeadEmail } from '@/types/database'
 
 type Responsible = { id: string; full_name: string | null; avatar_url: string | null }
 type LeadFull = Lead & { responsible: Responsible | null }
 type ActivityWithUser = ActivityType & { user: Responsible | null }
 type TaskWithUser = LeadTask & { user: Responsible | null }
+type FileWithUploader = LeadFile & { uploader: Responsible | null }
+type EmailWithSender = LeadEmail & { sender: Responsible | null }
 
 interface Props {
   lead: LeadFull
@@ -33,6 +36,8 @@ interface Props {
   activities: ActivityWithUser[]
   tasks: TaskWithUser[]
   users: Array<{ id: string; full_name: string | null; avatar_url: string | null }>
+  files: FileWithUploader[]
+  emails: EmailWithSender[]
 }
 
 const TEMP_CONFIG: Record<string, { label: string; emoji: string; color: string; bg: string }> = {
@@ -124,11 +129,19 @@ function ActivityRow({ act }: { act: ActivityWithUser }) {
   )
 }
 
-export function LeadDetailClient({ lead: initialLead, stages, activities: initialActivities, tasks: initialTasks, users }: Props) {
+export function LeadDetailClient({ lead: initialLead, stages, activities: initialActivities, tasks: initialTasks, users, files: initialFiles, emails: initialEmails }: Props) {
   const router = useRouter()
   const [lead, setLead] = useState(initialLead)
   const [activities, setActivities] = useState(initialActivities)
   const [tasks, setTasks] = useState(initialTasks)
+  const [files, setFiles] = useState<FileWithUploader[]>(initialFiles)
+  const [emails, setEmails] = useState<EmailWithSender[]>(initialEmails)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [showComposeEmail, setShowComposeEmail] = useState(false)
+  const [emailTo, setEmailTo] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
   const [tab, setTab] = useState<'historico' | 'notas' | 'atividades' | 'emails' | 'arquivos'>('historico')
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -402,12 +415,94 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
     toast.success(`Dados da ${data.razao_social} carregados!`)
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 20 * 1024 * 1024) { toast.error('Arquivo muito grande (máx 20MB)'); return }
+    setUploadingFile(true)
+    const supabase = createClient()
+    const me = await getMe()
+    const path = `${lead.organization_id}/${lead.id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`
+    const { error: upErr } = await supabase.storage.from('lead-files').upload(path, file, { upsert: false, contentType: file.type })
+    if (upErr) { toast.error(`Erro no upload: ${upErr.message}`); setUploadingFile(false); return }
+    const { data: fileRow, error: dbErr } = await supabase.from('lead_files').insert({
+      lead_id: lead.id,
+      organization_id: lead.organization_id,
+      uploaded_by: me?.id,
+      name: file.name,
+      path,
+      size: file.size,
+      mime_type: file.type || null,
+    }).select('*, uploader:uploaded_by(id, full_name, avatar_url)').single()
+    if (dbErr) { toast.error('Erro ao registrar arquivo'); setUploadingFile(false); return }
+    setFiles(prev => [fileRow as FileWithUploader, ...prev])
+    await logActivity('edicao', `Arquivo anexado: ${file.name}`)
+    toast.success('Arquivo anexado!')
+    setUploadingFile(false)
+    e.target.value = ''
+  }
+
+  const downloadFile = async (f: FileWithUploader) => {
+    const supabase = createClient()
+    const { data, error } = await supabase.storage.from('lead-files').createSignedUrl(f.path, 60)
+    if (error || !data?.signedUrl) { toast.error('Erro ao gerar link'); return }
+    window.open(data.signedUrl, '_blank')
+  }
+
+  const deleteFile = async (f: FileWithUploader) => {
+    if (!confirm(`Excluir o arquivo "${f.name}"?`)) return
+    const supabase = createClient()
+    await supabase.storage.from('lead-files').remove([f.path])
+    await supabase.from('lead_files').delete().eq('id', f.id)
+    setFiles(prev => prev.filter(x => x.id !== f.id))
+    toast.success('Arquivo removido')
+  }
+
+  const openCompose = () => {
+    setEmailTo(lead.email ?? '')
+    setEmailSubject('')
+    setEmailBody('')
+    setShowComposeEmail(true)
+  }
+
+  const sendLeadEmail = async () => {
+    if (!emailTo || !emailSubject || !emailBody) { toast.error('Preencha destinatário, assunto e mensagem'); return }
+    setSendingEmail(true)
+    const supabase = createClient()
+    const me = await getMe()
+    const res = await fetch('/api/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: emailTo, subject: emailSubject, body: emailBody }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      toast.error(`Erro ao enviar: ${body.error ?? 'verifique sua integração SMTP'}`)
+      setSendingEmail(false)
+      return
+    }
+    const { data: emailRow } = await supabase.from('lead_emails').insert({
+      lead_id: lead.id,
+      organization_id: lead.organization_id,
+      sent_by: me?.id,
+      recipient: emailTo,
+      subject: emailSubject,
+      body: emailBody,
+      status: 'sent',
+    }).select('*, sender:sent_by(id, full_name, avatar_url)').single()
+    if (emailRow) setEmails(prev => [emailRow as EmailWithSender, ...prev])
+    await logActivity('email', `E-mail enviado: ${emailSubject}`, `Para: ${emailTo}`)
+    toast.success('E-mail enviado!')
+    setShowComposeEmail(false)
+    setSendingEmail(false)
+  }
+
   const TABS = [
     { value: 'historico' as const, label: 'Histórico', count: activities.length + 1 },
     { value: 'notas' as const, label: 'Notas', count: activities.filter(a => ['nota', 'ligacao', 'reuniao', 'email_externo'].includes(a.type ?? '')).length },
     { value: 'atividades' as const, label: 'Atividades', count: tasks.length },
-    { value: 'emails' as const, label: 'E-mails', count: 0 },
-    { value: 'arquivos' as const, label: 'Arquivos', count: 0 },
+    { value: 'emails' as const, label: 'E-mails', count: emails.length },
+    { value: 'arquivos' as const, label: 'Arquivos', count: files.length },
   ]
 
   return (
@@ -925,22 +1020,104 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
 
             {/* E-MAILS */}
             {tab === 'emails' && (
-              <div className="max-w-xl text-center py-16 space-y-3">
-                <Mail className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                <p className="text-sm font-semibold">Histórico de e-mails</p>
-                <p className="text-xs text-muted-foreground">Os e-mails enviados pelo CYCLO para este lead aparecerão aqui. Configure uma integração de e-mail em Integrações → Email.</p>
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => router.push('/integracoes?tab=email')}>
-                  Configurar e-mail
-                </Button>
+              <div className="max-w-3xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">{emails.length} e-mail{emails.length !== 1 ? 's' : ''} enviado{emails.length !== 1 ? 's' : ''}</p>
+                  <Button size="sm" className="text-white text-xs gap-1.5" style={{ background: 'var(--brand-primary,#5B8CFF)' }} onClick={openCompose}>
+                    <Send className="w-3.5 h-3.5" /> Enviar e-mail
+                  </Button>
+                </div>
+
+                {emails.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-border rounded-xl">
+                    <Mail className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="text-sm font-semibold">Nenhum e-mail enviado ainda</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Configure o SMTP em <button onClick={() => router.push('/integracoes')} className="text-[#5B8CFF] hover:underline">Integrações → Email</button> antes de enviar.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {emails.map(em => (
+                      <details key={em.id} className="rounded-lg border border-border bg-card group">
+                        <summary className="cursor-pointer p-3 flex items-start gap-3 list-none">
+                          <div className="w-8 h-8 rounded-lg bg-[#5B8CFF]/10 flex items-center justify-center shrink-0">
+                            <Mail className="w-4 h-4 text-[#5B8CFF]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold truncate">{em.subject}</span>
+                              <Badge className="text-[9px] bg-[#12B981]/10 text-[#12B981] border-0 px-1.5">enviado</Badge>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Para: <span className="font-medium text-foreground">{em.recipient}</span> · {em.sender?.full_name ?? 'Sistema'} · {formatDate(em.sent_at)}
+                            </p>
+                          </div>
+                          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 group-open:rotate-180 transition-transform" />
+                        </summary>
+                        <div className="px-3 pb-3 pt-1 border-t border-border">
+                          <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/90 leading-relaxed">{em.body}</pre>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             {/* ARQUIVOS */}
             {tab === 'arquivos' && (
-              <div className="max-w-xl text-center py-16 space-y-3">
-                <FileText className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                <p className="text-sm font-semibold">Arquivos e documentos</p>
-                <p className="text-xs text-muted-foreground">Anexe propostas, contratos e documentos a este lead. Em breve disponível.</p>
+              <div className="max-w-3xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {files.length} arquivo{files.length !== 1 ? 's' : ''} · máx 20MB cada
+                  </p>
+                  <label className="cursor-pointer">
+                    <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} />
+                    <span className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md text-white" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                      {uploadingFile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      Enviar arquivo
+                    </span>
+                  </label>
+                </div>
+
+                {files.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-border rounded-xl">
+                    <FileText className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="text-sm font-semibold">Nenhum arquivo anexado ainda</p>
+                    <p className="text-xs text-muted-foreground mt-1">Propostas, apresentações, contratos — anexe aqui.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {files.map(f => {
+                      const Icon = (f.mime_type ?? '').startsWith('image/')
+                        ? ImageIcon
+                        : (f.mime_type ?? '').includes('sheet') || (f.mime_type ?? '').includes('excel')
+                        ? FileSpreadsheet
+                        : FileIcon
+                      const sizeMb = (f.size / (1024 * 1024)).toFixed(2)
+                      return (
+                        <div key={f.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/30 transition-colors">
+                          <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <Icon className="w-4 h-4 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{f.name}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {sizeMb} MB · {f.uploader?.full_name ?? 'Sistema'} · {formatDate(f.created_at)}
+                            </p>
+                          </div>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => downloadFile(f)} title="Baixar">
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-red-500" onClick={() => deleteFile(f)} title="Excluir">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -989,6 +1166,49 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
               >
                 {markingLost ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                 Confirmar perda
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compose email dialog */}
+      <Dialog open={showComposeEmail} onOpenChange={setShowComposeEmail}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-[#5B8CFF]" /> Enviar e-mail
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Para</Label>
+              <Input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="cliente@empresa.com" className="text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Assunto</Label>
+              <Input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Proposta comercial — ..." className="text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Mensagem</Label>
+              <Textarea
+                value={emailBody}
+                onChange={e => setEmailBody(e.target.value)}
+                placeholder="Olá [nome],&#10;&#10;Segue em anexo a proposta que conversamos..."
+                className="text-sm min-h-[200px] resize-none"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">O e-mail será enviado via sua integração SMTP configurada em Integrações → Email.</p>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 text-sm" onClick={() => setShowComposeEmail(false)}>Cancelar</Button>
+              <Button
+                className="flex-1 text-white text-sm gap-1.5"
+                style={{ background: 'var(--brand-primary,#5B8CFF)' }}
+                onClick={sendLeadEmail}
+                disabled={sendingEmail || !emailTo || !emailSubject || !emailBody}
+              >
+                {sendingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                Enviar
               </Button>
             </div>
           </div>

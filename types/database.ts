@@ -151,6 +151,30 @@ export interface Database {
         additional_contacts: Array<{ name: string; email: string; phone: string; role: string }> | null
         created_at: string
       }>
+      lead_files: TableDef<{
+        id: string
+        lead_id: string
+        organization_id: string
+        uploaded_by: string | null
+        name: string
+        path: string
+        size: number
+        mime_type: string | null
+        created_at: string
+      }>
+      lead_emails: TableDef<{
+        id: string
+        lead_id: string
+        organization_id: string
+        sent_by: string | null
+        recipient: string
+        subject: string
+        body: string
+        cc: string | null
+        bcc: string | null
+        status: string
+        sent_at: string
+      }>
       lead_tasks: TableDef<{
         id: string
         lead_id: string
@@ -368,6 +392,8 @@ export type Activity = Database['public']['Tables']['activities']['Row']
 export type PipelineStage = Database['public']['Tables']['pipeline_stages']['Row']
 export type Lead = Database['public']['Tables']['leads']['Row']
 export type LeadTask = Database['public']['Tables']['lead_tasks']['Row']
+export type LeadFile = Database['public']['Tables']['lead_files']['Row']
+export type LeadEmail = Database['public']['Tables']['lead_emails']['Row']
 export type ContentItem = Database['public']['Tables']['content_items']['Row']
 export type Approval = Database['public']['Tables']['approvals']['Row']
 export type ApprovalVersion = Database['public']['Tables']['approval_versions']['Row']
