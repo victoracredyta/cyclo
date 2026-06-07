@@ -310,7 +310,19 @@ export function ClientProfile({
   const [voiceInput, setVoiceInput] = useState(client.voice_tone ?? '')
   const [editingServices, setEditingServices] = useState(false)
   const [servicesInput, setServicesInput] = useState<string[]>(client.services ?? [])
+  const [customService, setCustomService] = useState('')
   const [savingField, setSavingField] = useState(false)
+
+  const addCustomService = () => {
+    const v = customService.trim()
+    if (!v) return
+    if (servicesInput.some(s => s.toLowerCase() === v.toLowerCase())) {
+      toast.error('Esse serviço já está adicionado')
+      return
+    }
+    setServicesInput(prev => [...prev, v])
+    setCustomService('')
+  }
 
   // Transfer ownership
   const [showTransfer, setShowTransfer] = useState(false)
@@ -777,26 +789,54 @@ export function ClientProfile({
               </CardHeader>
               <CardContent className="pt-1">
                 {editingServices ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {ALL_SERVICES.map(s => {
-                      const selected = servicesInput.includes(s)
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => toggleService(s)}
-                          className={cn(
-                            'px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors',
-                            selected
-                              ? 'bg-[#8B5CF6]/10 border-[#8B5CF6] text-[#8B5CF6]'
-                              : 'border-border text-muted-foreground hover:border-muted-foreground/40'
-                          )}
-                        >
-                          {selected && <Check className="w-2.5 h-2.5 inline mr-0.5" />}
-                          {s}
-                        </button>
-                      )
-                    })}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {ALL_SERVICES.map(s => {
+                        const selected = servicesInput.includes(s)
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => toggleService(s)}
+                            className={cn(
+                              'px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors',
+                              selected
+                                ? 'bg-[#8B5CF6]/10 border-[#8B5CF6] text-[#8B5CF6]'
+                                : 'border-border text-muted-foreground hover:border-muted-foreground/40'
+                            )}
+                          >
+                            {selected && <Check className="w-2.5 h-2.5 inline mr-0.5" />}
+                            {s}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {/* Custom services already selected */}
+                    {servicesInput.filter(s => !ALL_SERVICES.includes(s)).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {servicesInput.filter(s => !ALL_SERVICES.includes(s)).map(s => (
+                          <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30">
+                            {s}
+                            <button type="button" onClick={() => toggleService(s)} className="hover:bg-[#8B5CF6]/20 rounded-full p-0.5">
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Input for custom service */}
+                    <div className="flex gap-1.5">
+                      <Input
+                        value={customService}
+                        onChange={e => setCustomService(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomService() } }}
+                        placeholder="Adicionar serviço personalizado..."
+                        className="h-7 text-xs flex-1"
+                      />
+                      <Button type="button" size="sm" variant="outline" onClick={addCustomService} disabled={!customService.trim()} className="h-7 px-2 text-xs gap-1 shrink-0">
+                        <Plus className="w-3 h-3" /> Add
+                      </Button>
+                    </div>
                   </div>
                 ) : client.services && client.services.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">

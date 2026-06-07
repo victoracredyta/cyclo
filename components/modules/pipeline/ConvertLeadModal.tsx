@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, Trophy, Sparkles } from 'lucide-react'
+import { Loader2, Trophy, Sparkles, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Lead } from '@/types/database'
 
@@ -36,9 +36,21 @@ export function ConvertLeadModal({ lead, onClose, onConverted }: Props) {
   const [status, setStatus] = useState('Ativo')
   const [services, setServices] = useState<string[]>([])
   const [objectives, setObjectives] = useState('')
+  const [customService, setCustomService] = useState('')
 
   const toggleService = (s: string) =>
     setServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
+
+  const addCustomService = () => {
+    const v = customService.trim()
+    if (!v) return
+    if (services.some(s => s.toLowerCase() === v.toLowerCase())) {
+      toast.error('Esse serviço já está adicionado')
+      return
+    }
+    setServices(prev => [...prev, v])
+    setCustomService('')
+  }
 
   const submit = async () => {
     if (!name.trim()) { toast.error('Nome obrigatório'); return }
@@ -160,6 +172,8 @@ export function ConvertLeadModal({ lead, onClose, onConverted }: Props) {
 
           <div className="space-y-2">
             <Label className="text-xs font-semibold">Serviços contratados</Label>
+
+            {/* Sugestões */}
             <div className="flex flex-wrap gap-1.5">
               {SERVICES.map(s => (
                 <button
@@ -176,6 +190,34 @@ export function ConvertLeadModal({ lead, onClose, onConverted }: Props) {
                 </button>
               ))}
             </div>
+
+            {/* Custom service input */}
+            <div className="flex gap-1.5">
+              <Input
+                value={customService}
+                onChange={e => setCustomService(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomService() } }}
+                placeholder="Adicionar serviço personalizado..."
+                className="h-8 text-xs flex-1"
+              />
+              <Button type="button" size="sm" variant="outline" onClick={addCustomService} disabled={!customService.trim()} className="h-8 px-2.5 text-xs gap-1 shrink-0">
+                <Plus className="w-3.5 h-3.5" /> Adicionar
+              </Button>
+            </div>
+
+            {/* Custom services (not in SERVICES list) shown as removable chips */}
+            {services.filter(s => !SERVICES.includes(s)).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {services.filter(s => !SERVICES.includes(s)).map(s => (
+                  <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30">
+                    {s}
+                    <button type="button" onClick={() => toggleService(s)} className="hover:bg-[#8B5CF6]/20 rounded-full p-0.5">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 pt-2">
