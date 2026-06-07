@@ -286,6 +286,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     if (error) { toast.error('Erro ao atualizar visibilidade'); return }
     setFunnels(prev => prev.map(x => x.id === id ? { ...x, is_hidden: next } : x))
     toast.success(next ? `Funil "${f.name}" ocultado do Pipeline` : `Funil "${f.name}" visível no Pipeline`)
+    router.refresh()
   }
 
   const addFunnelStage = async (funnelId: string, stageName?: string) => {

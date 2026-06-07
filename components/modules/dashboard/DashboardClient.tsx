@@ -83,14 +83,6 @@ export function DashboardClient({
       bg: 'bg-[#12B981]/10',
     },
     {
-      label: 'Aprovações Pendentes',
-      value: String(pendingApprovals),
-      sub: pendingApprovals > 0 ? 'Aguardando retorno' : 'Tudo em dia',
-      icon: CheckSquare,
-      color: '#F59E0B',
-      bg: 'bg-[#F59E0B]/10',
-    },
-    {
       label: 'Pipeline',
       value: `R$ ${pipelineValue.toLocaleString('pt-BR')}`,
       sub: `${openLeadsCount} oportunidades abertas`,

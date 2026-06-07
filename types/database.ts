@@ -148,6 +148,7 @@ export interface Database {
         lost_reason: string | null
         won_at: string | null
         lost_at: string | null
+        additional_contacts: Array<{ name: string; email: string; phone: string; role: string }> | null
         created_at: string
       }>
       lead_tasks: TableDef<{

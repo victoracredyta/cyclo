@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Plus, X, Star } from 'lucide-react'
 import { toast } from 'sonner'
 
 const SERVICES = ['Social Media', 'Tráfego Pago', 'SEO', 'Email Marketing', 'Branding', 'Criação de Conteúdo', 'Website', 'Consultoria']
@@ -21,26 +21,29 @@ const schema = z.object({
   name: z.string().min(2, 'Nome obrigatório'),
   sector: z.string().optional(),
   segment_id: z.string().optional(),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
-  phone: z.string().optional(),
   mrr: z.string().optional(),
   responsible_id: z.string().optional(),
   objectives: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
-
 type SegmentOption = { id: string; name: string; color: string }
+type Contact = { name: string; email: string; phone: string; role: string; is_primary: boolean }
 
 interface NewClientModalProps {
   users: Array<{ id: string; full_name: string | null; avatar_url: string | null }>
   onClose: () => void
 }
 
+const blankContact = (primary = false): Contact => ({
+  name: '', email: '', phone: '', role: '', is_primary: primary,
+})
+
 export function NewClientModal({ users, onClose }: NewClientModalProps) {
   const router = useRouter()
   const [services, setServices] = useState<string[]>([])
   const [segments, setSegments] = useState<SegmentOption[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([blankContact(true)])
 
   useEffect(() => {
     const supabase = createClient()
@@ -48,6 +51,7 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
       if (data) setSegments(data)
     })
   }, [])
+
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
@@ -56,25 +60,60 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
     setServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
   }
 
+  const updateContact = (idx: number, patch: Partial<Contact>) => {
+    setContacts(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c))
+  }
+  const removeContact = (idx: number) => {
+    setContacts(prev => {
+      const next = prev.filter((_, i) => i !== idx)
+      // ensure at least one primary
+      if (next.length > 0 && !next.some(c => c.is_primary)) next[0].is_primary = true
+      return next
+    })
+  }
+  const addContact = () => setContacts(prev => [...prev, blankContact(false)])
+  const markPrimary = (idx: number) => {
+    setContacts(prev => prev.map((c, i) => ({ ...c, is_primary: i === idx })))
+  }
+
   const onSubmit = async (data: FormData) => {
     const supabase = createClient()
     const { data: org } = await supabase.from('users').select('organization_id').single()
     if (!org?.organization_id) return
+
+    // Primary contact for header info (legacy email/phone columns)
+    const primary = contacts.find(c => c.is_primary) ?? contacts[0]
 
     const { data: client, error } = await supabase.from('clients').insert({
       organization_id: org.organization_id,
       name: data.name,
       sector: data.sector || undefined,
       segment_id: data.segment_id || undefined,
-      email: data.email || undefined,
-      phone: data.phone || undefined,
+      email: primary?.email || undefined,
+      phone: primary?.phone || undefined,
       mrr: Number(data.mrr) || 0,
       responsible_id: data.responsible_id || undefined,
       objectives: data.objectives || undefined,
       services,
     }).select().single()
 
-    if (error) { toast.error('Erro ao criar cliente'); return }
+    if (error || !client) { toast.error('Erro ao criar cliente'); return }
+
+    // Save contacts (only those with at least a name)
+    const validContacts = contacts.filter(c => c.name.trim())
+    if (validContacts.length > 0) {
+      const rows = validContacts.map(c => ({
+        client_id: client.id,
+        name: c.name,
+        email: c.email || null,
+        phone: c.phone || null,
+        role: c.role || null,
+        is_primary: c.is_primary,
+      }))
+      const { error: cErr } = await supabase.from('client_contacts').insert(rows)
+      if (cErr) toast.error('Cliente criado, mas falhou ao salvar contatos')
+    }
+
     toast.success(`Cliente ${data.name} criado!`)
     router.refresh()
     onClose()
@@ -83,77 +122,154 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">Novo cliente</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <Label className="text-sm">Nome *</Label>
-              <Input placeholder="FitLife Academia" {...register('name')} />
-              {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Setor</Label>
-              <Select onValueChange={v => setValue('sector', v as string)}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {SECTORS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {segments.length > 0 && (
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-2">
+          {/* ── Empresa ──────────────────────────────────────── */}
+          <section className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Empresa</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-sm">Nome *</Label>
+                <Input placeholder="FitLife Academia" {...register('name')} />
+                {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+              </div>
               <div className="space-y-1.5">
-                <Label className="text-sm">Segmento</Label>
-                <Select<string> onValueChange={v => setValue('segment_id', v ?? undefined)}>
+                <Label className="text-sm">Setor</Label>
+                <Select onValueChange={v => setValue('sector', v as string)}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {segments.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    {SECTORS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {segments.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Segmento</Label>
+                  <Select<string> onValueChange={v => setValue('segment_id', v ?? undefined)}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {segments.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-sm">MRR (R$)</Label>
+                <Input type="number" placeholder="3500" {...register('mrr')} />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-sm">Responsável (interno)</Label>
+                <Select onValueChange={v => setValue('responsible_id', v as string)}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
+                  <SelectContent>
+                    {users.map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-sm">MRR (R$)</Label>
-              <Input type="number" placeholder="3500" {...register('mrr')} />
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-sm">Objetivo / Briefing</Label>
+                <textarea
+                  {...register('objectives')}
+                  rows={2}
+                  placeholder="Objetivo principal do cliente com sua empresa..."
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Email</Label>
-              <Input type="email" placeholder="contato@empresa.com" {...register('email')} />
-              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Telefone</Label>
-              <Input placeholder="(11) 99999-9999" {...register('phone')} />
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label className="text-sm">Responsável</Label>
-              <Select onValueChange={v => setValue('responsible_id', v as string)}>
-                <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
-                <SelectContent>
-                  {users.map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label className="text-sm">Objetivo / Briefing</Label>
-              <textarea
-                {...register('objectives')}
-                rows={2}
-                placeholder="Objetivo principal do cliente com sua empresa..."
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
+          </section>
 
-          {/* Services */}
-          <div className="space-y-2">
-            <Label className="text-sm">Serviços contratados</Label>
+          {/* ── Contatos ────────────────────────────────────── */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Contatos do cliente <span className="text-muted-foreground/60">({contacts.length})</span>
+              </h3>
+              <Button type="button" size="sm" variant="outline" onClick={addContact} className="h-7 gap-1.5 text-xs">
+                <Plus className="w-3.5 h-3.5" /> Adicionar contato
+              </Button>
+            </div>
+
+            <div className="space-y-2.5">
+              {contacts.map((c, i) => (
+                <div key={i} className="rounded-xl border border-border p-3 space-y-2.5 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => markPrimary(i)}
+                      className={`flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors ${
+                        c.is_primary
+                          ? 'bg-[#5B8CFF] text-white'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                      }`}
+                    >
+                      <Star className="w-3 h-3" fill={c.is_primary ? 'currentColor' : 'none'} />
+                      {c.is_primary ? 'Contato principal' : 'Marcar como principal'}
+                    </button>
+                    {contacts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeContact(i)}
+                        className="text-muted-foreground hover:text-red-500 transition-colors p-1"
+                        title="Remover contato"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Nome</Label>
+                      <Input
+                        value={c.name}
+                        onChange={e => updateContact(i, { name: e.target.value })}
+                        placeholder="João Silva"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Cargo</Label>
+                      <Input
+                        value={c.role}
+                        onChange={e => updateContact(i, { role: e.target.value })}
+                        placeholder="Diretor de Marketing"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Email</Label>
+                      <Input
+                        type="email"
+                        value={c.email}
+                        onChange={e => updateContact(i, { email: e.target.value })}
+                        placeholder="joao@empresa.com"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Telefone</Label>
+                      <Input
+                        value={c.phone}
+                        onChange={e => updateContact(i, { phone: e.target.value })}
+                        placeholder="(11) 99999-9999"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Serviços ────────────────────────────────────── */}
+          <section className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Serviços contratados</h3>
             <div className="flex flex-wrap gap-1.5">
               {SERVICES.map(s => (
                 <button
@@ -170,7 +286,7 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
                 </button>
               ))}
             </div>
-          </div>
+          </section>
 
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>

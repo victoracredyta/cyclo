@@ -317,9 +317,6 @@ export function ClientProfile({
 
   const kpis = [
     { label: 'MRR', value: `R$ ${(client.mrr ?? 0).toLocaleString('pt-BR')}`, color: '#5B8CFF' },
-    { label: 'Health Score', value: `${client.health_score}%`, color: healthColor(client.health_score) },
-    { label: 'Aprovações', value: `${pendingApprovals} pendentes`, color: pendingApprovals > 0 ? '#F59E0B' : '#12B981' },
-    { label: 'Conteúdos', value: `${publishedContent} publicados`, color: '#8B5CF6' },
     { label: 'Contrato', value: formatDate(client.contract_since), color: undefined },
     { label: 'Responsável', value: client.responsible?.full_name?.split(' ')[0] ?? '—', color: undefined },
   ]
@@ -350,16 +347,6 @@ export function ClientProfile({
                 <Badge className={cn('text-xs border', STATUS_COLORS[client.status] ?? STATUS_COLORS['Inativo'])}>
                   {client.status}
                 </Badge>
-                {client.health_score < 50 && (
-                  <Badge className="text-xs bg-red-500/10 text-red-500 border-red-500/20 gap-1">
-                    <AlertTriangle className="w-3 h-3" /> Em risco
-                  </Badge>
-                )}
-                {pendingApprovals > 0 && (
-                  <Badge className="text-xs bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20 gap-1">
-                    <Clock className="w-3 h-3" /> {pendingApprovals} aprovações pendentes
-                  </Badge>
-                )}
               </div>
 
               {client.sector && <p className="text-sm text-muted-foreground mt-0.5">{client.sector}</p>}
@@ -454,80 +441,12 @@ export function ClientProfile({
           <TabsTrigger value="activities" className="text-xs">
             Histórico {activities.length > 0 && <span className="ml-1 text-[10px] bg-muted px-1.5 rounded-full">{activities.length}</span>}
           </TabsTrigger>
-          <TabsTrigger value="approvals" className="text-xs">
-            Aprovações {pendingApprovals > 0 && <span className="ml-1 text-[10px] bg-[#F59E0B]/20 text-[#F59E0B] px-1.5 rounded-full">{pendingApprovals}</span>}
-          </TabsTrigger>
-          <TabsTrigger value="content" className="text-xs">Conteúdo</TabsTrigger>
           <TabsTrigger value="portal" className="text-xs">Portal</TabsTrigger>
         </TabsList>
 
         {/* ── Tab: Overview ─────────────────────────────────── */}
         <TabsContent value="overview" className="mt-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-            {/* Health Score gauge */}
-            <Card className="border-border shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-[#5B8CFF]" /> Health Score
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-end gap-3">
-                  <span className="text-5xl font-bold tabular-nums" style={{ color: healthColor(client.health_score) }}>
-                    {client.health_score}
-                  </span>
-                  <span className="text-muted-foreground text-sm mb-1.5">/ 100</span>
-                  <div className="ml-auto flex flex-col items-end gap-1">
-                    {[
-                      { label: 'Aprovações', val: approvals.length, color: '#F59E0B' },
-                      { label: 'Conteúdos', val: contentItems.length, color: '#5B8CFF' },
-                      { label: 'Conversas', val: openConversations, color: '#12B981' },
-                    ].map(m => (
-                      <div key={m.label} className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">{m.label}</span>
-                        <span className="font-bold" style={{ color: m.color }}>{m.val}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <Progress value={client.health_score} className="h-2.5 bg-muted" style={{ '--progress-color': healthColor(client.health_score) } as React.CSSProperties} />
-                <div className="flex gap-2">
-                  {[
-                    { min: 0, max: 40, label: 'Crítico', color: '#EF4444' },
-                    { min: 40, max: 70, label: 'Atenção', color: '#F59E0B' },
-                    { min: 70, max: 100, label: 'Saudável', color: '#12B981' },
-                  ].map(z => (
-                    <div
-                      key={z.label}
-                      className={cn(
-                        'flex-1 text-center text-[10px] font-semibold py-1 rounded-md',
-                        client.health_score >= z.min && client.health_score < z.max
-                          ? 'text-white'
-                          : 'text-muted-foreground bg-muted'
-                      )}
-                      style={client.health_score >= z.min && client.health_score < z.max
-                        ? { backgroundColor: z.color }
-                        : undefined}
-                    >
-                      {z.label}
-                    </div>
-                  ))}
-                  {client.health_score >= 70 && (
-                    <div className="flex-1 text-center text-[10px] font-semibold py-1 rounded-md text-white" style={{ backgroundColor: '#12B981' }}>
-                      Saudável
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {client.health_score >= 70
-                    ? '✅ Cliente saudável e engajado. Continue o bom trabalho!'
-                    : client.health_score >= 40
-                    ? '⚠️ Atenção: o cliente pode precisar de reengajamento.'
-                    : '🚨 Cliente em risco — agende uma reunião urgente!'}
-                </p>
-              </CardContent>
-            </Card>
 
             {/* Objectives + Voice tone */}
             <Card className="border-border shadow-none">
@@ -822,124 +741,6 @@ export function ClientProfile({
           </Card>
         </TabsContent>
 
-        {/* ── Tab: Approvals ────────────────────────────────── */}
-        <TabsContent value="approvals" className="mt-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{approvals.length} aprovações no total</p>
-              <Link href="/aprovacoes">
-                <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
-                  <ExternalLink className="w-3 h-3" /> Ver todas
-                </Button>
-              </Link>
-            </div>
-            {approvals.length === 0 ? (
-              <Card className="border-border shadow-none">
-                <CardContent className="text-center py-12 text-muted-foreground">
-                  <CheckSquare className="w-10 h-10 mx-auto mb-3 opacity-25" />
-                  <p className="text-sm">Nenhuma aprovação encontrada.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              approvals.map((a, i) => {
-                const s = APPROVAL_STATUS[a.status] ?? { label: a.status, color: '#6B7280' }
-                const isOverdue = a.due_date && new Date(a.due_date) < new Date() && a.status === 'pending'
-                return (
-                  <motion.div key={a.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                    <Card className={cn('border-border shadow-none', isOverdue && 'border-red-500/30 bg-red-500/5')}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${s.color}15` }}>
-                            {CHANNEL_ICONS[a.channel ?? ''] ?? <Layers className="w-4 h-4" style={{ color: s.color }} />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-semibold text-sm">{a.title}</p>
-                              <Badge className="text-[10px] border-0" style={{ backgroundColor: `${s.color}15`, color: s.color }}>
-                                {s.label}
-                              </Badge>
-                              {isOverdue && (
-                                <Badge className="text-[10px] bg-red-500/10 text-red-500 border-0">
-                                  <AlertTriangle className="w-2.5 h-2.5 mr-0.5" /> Atrasado
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                              {a.channel && <span className="capitalize">{a.channel}</span>}
-                              {a.type && <><span>·</span><span>{a.type}</span></>}
-                              {a.due_date && <><span>·</span><span>Prazo: {formatDate(a.due_date)}</span></>}
-                              <span>·</span>
-                              <span>{formatDate(a.created_at)}</span>
-                            </div>
-                          </div>
-                          <Link href={`/aprovacoes/${a.id}`}>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </Button>
-                          </Link>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )
-              })
-            )}
-          </div>
-        </TabsContent>
-
-        {/* ── Tab: Content ──────────────────────────────────── */}
-        <TabsContent value="content" className="mt-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{contentItems.length} conteúdos</p>
-              <Link href="/planner">
-                <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
-                  <ExternalLink className="w-3 h-3" /> Ver planner
-                </Button>
-              </Link>
-            </div>
-            {contentItems.length === 0 ? (
-              <Card className="border-border shadow-none">
-                <CardContent className="text-center py-12 text-muted-foreground">
-                  <FileText className="w-10 h-10 mx-auto mb-3 opacity-25" />
-                  <p className="text-sm">Nenhum conteúdo encontrado.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {contentItems.map((c, i) => {
-                  const s = CONTENT_STATUS[c.status] ?? { label: c.status, color: '#6B7280' }
-                  return (
-                    <motion.div key={c.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                      <Card className="border-border shadow-none">
-                        <CardContent className="p-3">
-                          <div className="flex items-start gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                              {CHANNEL_ICONS[c.channel ?? ''] ?? <Layers className="w-4 h-4 text-muted-foreground" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-sm truncate">{c.title ?? 'Sem título'}</p>
-                                <Badge className="text-[10px] border-0 shrink-0" style={{ backgroundColor: `${s.color}15`, color: s.color }}>
-                                  {s.label}
-                                </Badge>
-                              </div>
-                              <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
-                                {c.channel && <span className="capitalize">{c.channel}</span>}
-                                {c.scheduled_date && <><span>·</span><span>{formatDate(c.scheduled_date)}</span></>}
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
         {/* ── Tab: Portal ───────────────────────────────────── */}
         <TabsContent value="portal" className="mt-4 space-y-4">
           {/* Portal status */}
@@ -992,11 +793,10 @@ export function ClientProfile({
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Aprovações', value: approvals.length, icon: CheckSquare, color: '#F59E0B' },
-                  { label: 'Pendentes', value: pendingApprovals, icon: Clock, color: '#EF4444' },
-                  { label: 'Conversas', value: conversations.length, icon: MessageCircle, color: '#5B8CFF' },
+                  { label: 'Atividades', value: activities.length, icon: Clock, color: '#5B8CFF' },
+                  { label: 'Conversas', value: conversations.length, icon: MessageCircle, color: '#12B981' },
                 ].map(s => {
                   const Icon = s.icon
                   return (

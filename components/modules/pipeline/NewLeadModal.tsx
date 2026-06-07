@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
-import { Loader2, ChevronDown, Search, Building2 } from 'lucide-react'
+import { Loader2, ChevronDown, Search, Building2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PipelineStage } from '@/types/database'
 import type { LeadWithResponsible } from './PipelineBoard'
@@ -101,6 +101,13 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
   const [segments, setSegments] = useState<SegmentOption[]>([])
   const [cnpjInput, setCnpjInput] = useState('')
   const [cnpjLoading, setCnpjLoading] = useState(false)
+  const [extraContacts, setExtraContacts] = useState<Array<{ name: string; email: string; phone: string; role: string }>>([])
+
+  const addExtraContact = () => setExtraContacts(prev => [...prev, { name: '', email: '', phone: '', role: '' }])
+  const updateExtraContact = (idx: number, patch: Partial<{ name: string; email: string; phone: string; role: string }>) =>
+    setExtraContacts(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c))
+  const removeExtraContact = (idx: number) =>
+    setExtraContacts(prev => prev.filter((_, i) => i !== idx))
 
   useEffect(() => {
     const supabase = createClient()
@@ -148,6 +155,8 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
 
     const finalOrigin = data.origin === 'Personalizado' ? (data.customOrigin || 'Personalizado') : data.origin
 
+    const validExtras = extraContacts.filter(c => c.name.trim())
+
     const { data: lead, error } = await supabase.from('leads').insert({
       organization_id: me.organization_id,
       stage_id: data.stage_id,
@@ -163,6 +172,7 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
       priority: data.priority,
       responsible_id: data.responsible_id || undefined,
       next_action: data.next_action || undefined,
+      additional_contacts: validExtras,
     }).select('*, responsible:responsible_id(id, full_name, avatar_url)').single()
 
     if (error) { toast.error('Erro ao criar lead'); return }
@@ -336,6 +346,34 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
               <Label className="text-sm">Próxima ação</Label>
               <Input placeholder="Enviar proposta, Agendar reunião..." {...register('next_action')} />
             </div>
+          </div>
+
+          {/* Extra contacts */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Outros contatos {extraContacts.length > 0 && `(${extraContacts.length})`}
+              </Label>
+              <Button type="button" size="sm" variant="outline" onClick={addExtraContact} className="h-7 gap-1.5 text-xs">
+                <Plus className="w-3.5 h-3.5" /> Adicionar contato
+              </Button>
+            </div>
+            {extraContacts.map((c, i) => (
+              <div key={i} className="rounded-lg border border-border p-2.5 space-y-2 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase">Contato #{i + 2}</span>
+                  <button type="button" onClick={() => removeExtraContact(i)} className="text-muted-foreground hover:text-red-500" title="Remover">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input value={c.name} onChange={e => updateExtraContact(i, { name: e.target.value })} placeholder="Nome" className="h-8 text-xs" />
+                  <Input value={c.role} onChange={e => updateExtraContact(i, { role: e.target.value })} placeholder="Cargo" className="h-8 text-xs" />
+                  <Input type="email" value={c.email} onChange={e => updateExtraContact(i, { email: e.target.value })} placeholder="Email" className="h-8 text-xs" />
+                  <Input value={c.phone} onChange={e => updateExtraContact(i, { phone: e.target.value })} placeholder="Telefone" className="h-8 text-xs" />
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="flex gap-3 pt-1">
