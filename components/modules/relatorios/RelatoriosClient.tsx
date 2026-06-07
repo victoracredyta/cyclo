@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import {
   TrendingUp, Users, FileText, Download, Sparkles, Target,
   DollarSign, Activity, Filter, BarChart3 as BarChartIcon,
   ArrowUpRight, ArrowDownRight, Trophy, UserPlus, Zap,
+  FileSpreadsheet, Globe, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -205,20 +206,265 @@ export function RelatoriosClient({ clients, leads, stages, goals, users, funnels
   }, [funnels, filteredLeads])
 
   // ── Export ───────────────────────────────────────────────────────
-  const exportCSV = () => {
-    const rows: string[][] = [
-      ['KPI', 'Valor'],
-      ['MRR Total Ativo', money(totalMrr)],
-      ['Conversão', `${conversionRate}%`],
-      ['Receita Fechada (período)', money(wonRevenue)],
-      ['Novos Leads (período)', String(newLeadsCount)],
-      ['Nº Propostas (período)', String(proposalsCount)],
-      ['Clientes Novos (período)', String(newClientsCount)],
-    ]
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+  const reportDate = new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })
+  const dateSlug = new Date().toISOString().slice(0, 10)
+  const periodLabel = PERIODS.find(p => p.value === period)?.label ?? 'Período'
+
+  // KPI rows used in all exports
+  const kpiRows: Array<[string, string]> = [
+    ['MRR Total Ativo', money(totalMrr)],
+    ['Conversão de Leads', `${conversionRate}%`],
+    ['Receita Fechada', money(wonRevenue)],
+    ['Novos Leads', String(newLeadsCount)],
+    ['Nº de Propostas', String(proposalsCount)],
+    ['Clientes Novos', String(newClientsCount)],
+    ['Negócios Ganhos', String(wonLeads)],
+    ['Negócios Perdidos', String(lostLeads)],
+    ['Ticket Médio', wonLeads > 0 ? money(wonRevenue / wonLeads) : '—'],
+  ]
+
+  // ── EXCEL ─── HTML table with .xls extension (Excel opens natively) ──
+  const exportExcel = () => {
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="UTF-8"><xml><x:ExcelWorkbook><x:ExcelWorksheets>
+<x:ExcelWorksheet><x:Name>Relatório CYCLO</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>
+</x:ExcelWorksheets></x:ExcelWorkbook></xml></head><body>
+<table border="1" cellspacing="0" cellpadding="6">
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff;font-size:16px">Relatório CYCLO — ${reportDate}</th></tr>
+  <tr><td colspan="2" style="background:#f0f4ff">Período: ${periodLabel}</td></tr>
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff">Indicadores principais</th></tr>
+  ${kpiRows.map(([k, v]) => `<tr><td><b>${k}</b></td><td>${v}</td></tr>`).join('')}
+
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff">Origem dos Leads</th></tr>
+  <tr><th>Origem</th><th>Quantidade</th></tr>
+  ${leadOrigins.map(o => `<tr><td>${o.origin}</td><td>${o.count}</td></tr>`).join('')}
+
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff">Funil de Conversão</th></tr>
+  <tr><th>Etapa</th><th>Leads ativos</th></tr>
+  ${funnelData.map(f => `<tr><td>${f.stage}</td><td>${f.count}</td></tr>`).join('')}
+
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff">Top Vendedores</th></tr>
+  <tr><th>Vendedor (Leads / Ganhos)</th><th>Receita ganha</th></tr>
+  ${sellerPerformance.map(s => `<tr><td>${s.name} (${s.leads} / ${s.won})</td><td>${money(s.revenue)}</td></tr>`).join('')}
+
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff">Metas em andamento</th></tr>
+  <tr><th>Meta</th><th>Progresso</th></tr>
+  ${goals.map(g => `<tr><td>${g.label}</td><td>${Math.round((g.current_value / g.target_value) * 100)}% (${g.current_value} / ${g.target_value} ${g.unit ?? ''})</td></tr>`).join('')}
+
+  <tr><th colspan="2" style="background:#5B8CFF;color:#fff">Motivos de Perda</th></tr>
+  <tr><th>Motivo</th><th>Ocorrências</th></tr>
+  ${lossReasons.map(([r, c]) => `<tr><td>${r}</td><td>${c}</td></tr>`).join('')}
+</table>
+</body></html>`
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    a.download = `relatorio-cyclo-${new Date().toISOString().slice(0, 10)}.csv`
+    a.href = URL.createObjectURL(new Blob([html], { type: 'application/vnd.ms-excel' }))
+    a.download = `relatorio-cyclo-${dateSlug}.xls`
+    a.click()
+  }
+
+  // ── PDF ─── open print-friendly window, auto-trigger print → user saves as PDF ──
+  const exportPDF = () => {
+    const w = window.open('', '_blank', 'width=900,height=700')
+    if (!w) return
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório CYCLO — ${reportDate}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;color:#111827;padding:48px;max-width:1100px;margin:0 auto;line-height:1.5}
+  header{border-bottom:3px solid #5B8CFF;padding-bottom:16px;margin-bottom:32px}
+  h1{color:#0f172a;font-size:28px;margin-bottom:8px;letter-spacing:-0.5px}
+  .meta{color:#64748b;font-size:13px}
+  h2{color:#5B8CFF;font-size:14px;text-transform:uppercase;letter-spacing:1px;margin:32px 0 12px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+  .kpi{background:linear-gradient(135deg,#f8f9ff,#fff);border:1px solid #e8eeff;border-radius:12px;padding:16px}
+  .kpi-label{font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+  .kpi-value{font-size:24px;font-weight:800;color:#5B8CFF;margin-top:6px;letter-spacing:-0.5px}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  th{background:#f1f5f9;color:#334155;padding:10px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
+  td{padding:10px 12px;border-bottom:1px solid #e2e8f0}
+  tr:last-child td{border-bottom:none}
+  .bar{display:inline-block;height:8px;background:#5B8CFF;border-radius:4px;vertical-align:middle;margin-right:8px}
+  .pct{display:inline-block;width:50px;font-weight:700;color:#5B8CFF}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;text-align:center}
+  @media print{body{padding:24px}h2{page-break-after:avoid}table{page-break-inside:avoid}}
+</style></head><body>
+<header>
+  <h1>Relatório CYCLO</h1>
+  <p class="meta">${reportDate} · Período: ${periodLabel}</p>
+</header>
+
+<h2>📊 Indicadores principais</h2>
+<div class="kpi-grid">
+  ${kpiRows.map(([k, v]) => `<div class="kpi"><div class="kpi-label">${k}</div><div class="kpi-value">${v}</div></div>`).join('')}
+</div>
+
+<h2>🎯 Funil de Conversão</h2>
+<table><tr><th>Etapa</th><th>Leads ativos</th><th>Distribuição</th></tr>
+${funnelData.map(f => {
+  const max = Math.max(...funnelData.map(d => d.count), 1)
+  const w = Math.round((f.count / max) * 100)
+  return `<tr><td><b>${f.stage}</b></td><td>${f.count}</td><td><span class="bar" style="width:${w}%;background:${f.fill}"></span></td></tr>`
+}).join('')}</table>
+
+<h2>📍 Origem dos Leads</h2>
+<table><tr><th>Origem</th><th>Quantidade</th><th>%</th></tr>
+${leadOrigins.map(o => {
+  const total = leadOrigins.reduce((s, x) => s + x.count, 0)
+  const pct = total ? Math.round((o.count / total) * 100) : 0
+  return `<tr><td><b>${o.origin}</b></td><td>${o.count}</td><td>${pct}%</td></tr>`
+}).join('')}</table>
+
+<h2>🏆 Top Vendedores (por receita)</h2>
+<table><tr><th>Posição</th><th>Vendedor</th><th>Leads / Ganhos</th><th>Receita</th></tr>
+${sellerPerformance.map((s, i) => `<tr><td>${i + 1}º</td><td><b>${s.name}</b></td><td>${s.leads} / ${s.won}</td><td><b style="color:#12B981">${money(s.revenue)}</b></td></tr>`).join('')}</table>
+
+${goals.length > 0 ? `<h2>🎯 Metas em andamento</h2>
+<table><tr><th>Meta</th><th>Atual</th><th>Alvo</th><th>Progresso</th></tr>
+${goals.map(g => {
+  const pct = Math.min(Math.round((g.current_value / g.target_value) * 100), 100)
+  return `<tr><td><b>${g.label}</b></td><td>${g.current_value} ${g.unit ?? ''}</td><td>${g.target_value} ${g.unit ?? ''}</td><td><span class="pct">${pct}%</span><span class="bar" style="width:${pct}%;background:${g.color}"></span></td></tr>`
+}).join('')}</table>` : ''}
+
+${lossReasons.length > 0 ? `<h2>⚠️ Motivos de Perda</h2>
+<table><tr><th>Motivo</th><th>Ocorrências</th></tr>
+${lossReasons.map(([r, c]) => `<tr><td>${r}</td><td><b style="color:#e1493c">${c}</b></td></tr>`).join('')}</table>` : ''}
+
+<footer>Gerado pelo CYCLO em ${new Date().toLocaleString('pt-BR')}</footer>
+<script>window.onload = function() { setTimeout(function() { window.print(); }, 400); }<\/script>
+</body></html>`)
+    w.document.close()
+  }
+
+  // ── HTML INTERATIVO ─── standalone HTML with Chart.js from CDN ──
+  const exportHTML = () => {
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório CYCLO Interativo — ${reportDate}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif}
+  body{background:#f8fafc;color:#0f172a;padding:32px;line-height:1.5}
+  .container{max-width:1280px;margin:0 auto}
+  header{background:linear-gradient(135deg,#5B8CFF15,#8B5CF615);border:1px solid #e2e8f0;border-radius:24px;padding:32px;margin-bottom:24px;position:relative;overflow:hidden}
+  header::before{content:'';position:absolute;top:-100px;right:-100px;width:300px;height:300px;background:radial-gradient(circle,#5B8CFF30,transparent);border-radius:50%}
+  .label{font-size:11px;color:#5B8CFF;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px}
+  h1{font-size:36px;font-weight:900;letter-spacing:-1px}
+  .meta{color:#64748b;font-size:14px;margin-top:8px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px}
+  .kpi{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px;transition:all 0.2s}
+  .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.06)}
+  .kpi-label{font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+  .kpi-value{font-size:24px;font-weight:900;margin-top:6px;letter-spacing:-0.5px}
+  .grid{display:grid;gap:16px;margin-bottom:16px}
+  .grid-2{grid-template-columns:2fr 1fr}
+  .grid-3{grid-template-columns:repeat(3,1fr)}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px}
+  .card h3{font-size:14px;font-weight:700;margin-bottom:4px}
+  .card .sub{font-size:11px;color:#94a3b8;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+  th{background:#f1f5f9;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;font-weight:700}
+  td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
+  canvas{max-height:300px}
+  footer{text-align:center;color:#94a3b8;font-size:12px;margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0}
+  @media (max-width:768px){.grid-2,.grid-3{grid-template-columns:1fr}}
+</style></head><body>
+<div class="container">
+  <header>
+    <div class="label">📊 BUSINESS INTELLIGENCE</div>
+    <h1>Relatório CYCLO</h1>
+    <p class="meta">${reportDate} · Período: ${periodLabel}</p>
+  </header>
+
+  <div class="kpis">
+    ${kpiRows.map(([k, v]) => `<div class="kpi"><div class="kpi-label">${k}</div><div class="kpi-value" style="color:#5B8CFF">${v}</div></div>`).join('')}
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>📈 Evolução do MRR</h3>
+      <p class="sub">Receita recorrente mensal — últimos 6 meses</p>
+      <canvas id="mrrChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>📍 Origem dos Leads</h3>
+      <p class="sub">De onde seus leads vêm</p>
+      <canvas id="originChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h3>🎯 Funil de Conversão</h3>
+      <p class="sub">Leads ativos por etapa</p>
+      <canvas id="funnelChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>🏆 Top Vendedores</h3>
+      <p class="sub">Por receita fechada</p>
+      <table><tr><th>Vendedor</th><th>Ganhos</th><th>Receita</th></tr>
+      ${sellerPerformance.map(s => `<tr><td><b>${s.name}</b></td><td>${s.won}/${s.leads}</td><td style="color:#12B981;font-weight:700">${money(s.revenue)}</td></tr>`).join('')}</table>
+    </div>
+    <div class="card">
+      <h3>⚠️ Motivos de Perda</h3>
+      <p class="sub">Por que leads não fecharam</p>
+      <table><tr><th>Motivo</th><th>Qtd</th></tr>
+      ${lossReasons.map(([r, c]) => `<tr><td>${r}</td><td style="color:#e1493c;font-weight:700">${c}</td></tr>`).join('') || '<tr><td colspan="2" style="text-align:center;color:#94a3b8">Sem perdas registradas</td></tr>'}</table>
+    </div>
+  </div>
+
+  ${goals.length > 0 ? `<div class="card" style="margin-top:16px">
+    <h3>🎯 Metas em andamento</h3>
+    <p class="sub">${goals.length} metas cadastradas</p>
+    ${goals.map(g => {
+      const pct = Math.min(Math.round((g.current_value / g.target_value) * 100), 100)
+      return `<div style="margin:12px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <b>${g.label}</b><span style="color:${g.color};font-weight:700">${pct}%</span>
+        </div>
+        <div style="height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+          <div style="height:100%;background:${g.color};width:${pct}%;border-radius:4px;transition:width 0.6s"></div>
+        </div>
+      </div>`
+    }).join('')}
+  </div>` : ''}
+
+  <footer>Gerado pelo CYCLO em ${new Date().toLocaleString('pt-BR')} · Compartilhe este HTML — funciona offline</footer>
+</div>
+
+<script>
+const data = {
+  mrr: ${JSON.stringify(mrrTrend)},
+  origin: ${JSON.stringify(leadOrigins)},
+  funnel: ${JSON.stringify(funnelData)}
+};
+window.addEventListener('load', () => {
+  new Chart(document.getElementById('mrrChart'), {
+    type: 'line',
+    data: {
+      labels: data.mrr.map(d => d.month),
+      datasets: [{
+        label: 'MRR',
+        data: data.mrr.map(d => d.mrr),
+        borderColor: '#5B8CFF', backgroundColor: 'rgba(91,140,255,0.15)',
+        borderWidth: 3, fill: true, tension: 0.4, pointRadius: 4
+      }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+  new Chart(document.getElementById('originChart'), {
+    type: 'doughnut',
+    data: { labels: data.origin.map(o => o.origin),
+      datasets: [{ data: data.origin.map(o => o.count), backgroundColor: data.origin.map(o => o.fill) }] },
+    options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } } }
+  });
+  new Chart(document.getElementById('funnelChart'), {
+    type: 'bar', data: { labels: data.funnel.map(f => f.stage),
+      datasets: [{ label: 'Leads', data: data.funnel.map(f => f.count), backgroundColor: data.funnel.map(f => f.fill) }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+  });
+});
+<\/script>
+</body></html>`
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+    a.download = `relatorio-cyclo-${dateSlug}.html`
     a.click()
   }
 
@@ -292,9 +538,7 @@ export function RelatoriosClient({ clients, leads, stages, goals, users, funnels
               Indicadores em tempo real do seu negócio — pipeline, conversão, receita e performance da equipe.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> Exportar
-          </Button>
+          <ExportMenu onExcel={exportExcel} onPdf={exportPDF} onHtml={exportHTML} />
         </div>
 
         {/* Filter bar */}
@@ -668,6 +912,87 @@ export function RelatoriosClient({ clients, leads, stages, goals, users, funnels
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+// ─── ExportMenu — dropdown with Excel / PDF / HTML ─────────────────
+function ExportMenu({ onExcel, onPdf, onHtml }: { onExcel: () => void; onPdf: () => void; onHtml: () => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const items = [
+    {
+      icon: FileSpreadsheet,
+      title: 'Excel (.xls)',
+      desc: 'Planilha completa pra abrir no Excel ou Google Sheets',
+      color: '#12B981',
+      onClick: onExcel,
+    },
+    {
+      icon: FileText,
+      title: 'PDF',
+      desc: 'Documento pronto pra imprimir ou compartilhar',
+      color: '#e1493c',
+      onClick: onPdf,
+    },
+    {
+      icon: Globe,
+      title: 'HTML Interativo',
+      desc: 'Arquivo web com gráficos navegáveis (funciona offline)',
+      color: '#5B8CFF',
+      onClick: onHtml,
+    },
+  ]
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(o => !o)}
+        className="gap-1.5 text-xs"
+      >
+        <Download className="w-3.5 h-3.5" /> Exportar
+        <ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
+      </Button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Escolha o formato</p>
+          </div>
+          <div className="py-1">
+            {items.map(item => {
+              const Icon = item.icon
+              return (
+                <button
+                  key={item.title}
+                  onClick={() => { item.onClick(); setOpen(false) }}
+                  className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors text-left group"
+                >
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-110" style={{ background: `${item.color}15` }}>
+                    <Icon className="w-4 h-4" style={{ color: item.color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold leading-tight">{item.title}</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{item.desc}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
