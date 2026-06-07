@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Search, Filter, X, Users, CalendarDays, Kanban, ChevronDown, Check, Settings } from 'lucide-react'
+import { Plus, Search, Filter, X, Users, CalendarDays, Kanban, ChevronDown, Check, Settings, DollarSign, Trophy, TrendingUp, Pause, Banknote } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -74,6 +74,10 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
   const [filterPeriod, setFilterPeriod] = useState('all')
   const [filterTemp, setFilterTemp] = useState('all')
   const [filterOrigin, setFilterOrigin] = useState('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'won' | 'lost'>('open')
+  const [filterStuck, setFilterStuck] = useState(false)
+  const [filterValueMin, setFilterValueMin] = useState('')
+  const [filterValueMax, setFilterValueMax] = useState('')
 
   // Funnels
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(() => {
@@ -114,6 +118,8 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
   const activeFiltersCount = [
     filterSeller !== 'all', filterPeriod !== 'all',
     filterTemp !== 'all', filterOrigin !== 'all',
+    filterStatus !== 'open', filterStuck,
+    filterValueMin !== '', filterValueMax !== '',
   ].filter(Boolean).length
 
   const filteredLeads = useMemo(() => {
@@ -123,6 +129,10 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
       const stageIds = new Set(visibleStages.map(s => s.id))
       result = result.filter(l => l.stage_id && stageIds.has(l.stage_id))
     }
+    // Status filter (default: open)
+    if (filterStatus === 'open') result = result.filter(l => !l.won_at && !l.lost_at)
+    if (filterStatus === 'won') result = result.filter(l => !!l.won_at)
+    if (filterStatus === 'lost') result = result.filter(l => !!l.lost_at)
     if (search) {
       const q = search.toLowerCase()
       result = result.filter(l => l.name.toLowerCase().includes(q) || (l.company ?? '').toLowerCase().includes(q))
@@ -135,8 +145,20 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
     }
     if (filterTemp !== 'all') result = result.filter(l => l.priority === filterTemp)
     if (filterOrigin !== 'all') result = result.filter(l => l.origin === filterOrigin)
+    if (filterStuck) {
+      const fourteenDaysAgo = Date.now() - 14 * 864e5
+      result = result.filter(l => new Date(l.created_at).getTime() < fourteenDaysAgo)
+    }
+    if (filterValueMin) {
+      const min = Number(filterValueMin)
+      if (!Number.isNaN(min)) result = result.filter(l => (l.value ?? 0) >= min)
+    }
+    if (filterValueMax) {
+      const max = Number(filterValueMax)
+      if (!Number.isNaN(max)) result = result.filter(l => (l.value ?? 0) <= max)
+    }
     return result
-  }, [leads, search, filterSeller, filterPeriod, filterTemp, filterOrigin, selectedFunnelId, visibleStages])
+  }, [leads, search, filterSeller, filterPeriod, filterTemp, filterOrigin, filterStatus, filterStuck, filterValueMin, filterValueMax, selectedFunnelId, visibleStages])
 
   const leadsByStage = useMemo(() => {
     const map: Record<string, LeadWithResponsible[]> = {}
@@ -207,34 +229,41 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
 
   const clearFilters = () => {
     setFilterSeller('all'); setFilterPeriod('all'); setFilterTemp('all'); setFilterOrigin('all')
+    setFilterStatus('open'); setFilterStuck(false); setFilterValueMin(''); setFilterValueMax('')
   }
 
   const selectedFunnel = funnels.find(f => f.id === selectedFunnelId)
 
+  // Stats for the header strip
+  const wonCount = leads.filter(l => l.won_at && (selectedFunnelId === 'all' || visibleStages.some(s => s.id === l.stage_id))).length
+  const lostCount = leads.filter(l => l.lost_at && (selectedFunnelId === 'all' || visibleStages.some(s => s.id === l.stage_id))).length
+  const conversionRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : 0
+
   return (
     <div className="flex flex-col h-full gap-3">
-      {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-xl font-bold">Pipeline de Vendas</h2>
+      {/* ── Hero Header (PipeRun style) ─────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-gradient-to-br from-card via-card to-[#5B8CFF]/5 overflow-hidden">
+        {/* Row 1 — title + funnel + actions */}
+        <div className="flex items-center gap-3 flex-wrap px-4 pt-3 pb-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <h2 className="text-xl font-black tracking-tight">Pipeline de Vendas</h2>
 
             {/* Funnel selector */}
             {funnels.length > 0 && (
               <div className="relative">
                 <button
                   onClick={() => setShowFunnelDropdown(v => !v)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:border-muted-foreground/40 transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold hover:border-[#5B8CFF]/40 transition-colors"
                 >
-                  <Kanban className="w-3.5 h-3.5" />
-                  {selectedFunnelId === 'all' ? 'Todos os funis' : (selectedFunnel?.name ?? 'Funil')}
-                  <ChevronDown className="w-3 h-3" />
+                  <Kanban className="w-3.5 h-3.5 text-[#5B8CFF]" />
+                  <span>{selectedFunnelId === 'all' ? 'Todos os funis' : (selectedFunnel?.name ?? 'Funil')}</span>
+                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
                 </button>
 
                 {showFunnelDropdown && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowFunnelDropdown(false)} />
-                    <div className="absolute left-0 top-8 z-50 bg-card border border-border rounded-xl shadow-lg p-1.5 min-w-[200px]">
+                    <div className="absolute left-0 top-9 z-50 bg-card border border-border rounded-xl shadow-lg p-1.5 min-w-[220px]">
                       <button
                         onClick={() => { setSelectedFunnelId('all'); setShowFunnelDropdown(false) }}
                         className={cn('w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors hover:bg-muted', selectedFunnelId === 'all' && 'font-semibold text-[#5B8CFF]')}
@@ -266,37 +295,47 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-            <span>{filteredLeads.length} oportunidades · R$ {totalValue.toLocaleString('pt-BR')}</span>
-            {hotCount > 0 && <span className="text-red-500">🔥 {hotCount} quente{hotCount > 1 ? 's' : ''}</span>}
-            {warmCount > 0 && <span className="text-yellow-500">🌡️ {warmCount} morno{warmCount > 1 ? 's' : ''}</span>}
-            {coldCount > 0 && <span className="text-blue-500">❄️ {coldCount} frio{coldCount > 1 ? 's' : ''}</span>}
+
+          <div className="flex gap-2 ml-auto">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input placeholder="Buscar nome ou empresa..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 w-56 text-sm" />
+            </div>
+            <Button
+              size="sm" variant="outline"
+              className={cn('gap-1.5 text-xs h-9 relative', showFilters && 'border-[#5B8CFF] text-[#5B8CFF] bg-[#5B8CFF]/5')}
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              Filtros
+              {activeFiltersCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#5B8CFF] text-white text-[9px] flex items-center justify-center font-bold">
+                  {activeFiltersCount}
+                </span>
+              )}
+            </Button>
+            <Button
+              size="sm" className="text-white gap-1.5 text-xs h-9 shadow-md"
+              style={{ background: 'var(--brand-primary,#5B8CFF)' }}
+              onClick={() => { setDefaultStageId(visibleStages[0]?.id ?? stages[0]?.id); setShowNewLead(true) }}
+            >
+              <Plus className="w-3.5 h-3.5" /> Novo lead
+            </Button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 w-44 text-sm" />
+
+        {/* Row 2 — stats strip (PipeRun style) */}
+        <div className="border-t border-border bg-muted/20 px-4 py-2 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 text-xs">
+          <Stat icon={Kanban} label="Oportunidades" value={String(filteredLeads.length)} color="#5B8CFF" />
+          <Stat icon={DollarSign} label="Valor total" value={`R$ ${totalValue.toLocaleString('pt-BR')}`} color="#12B981" />
+          <Stat icon={Trophy} label="Ganhos" value={String(wonCount)} color="#12B981" />
+          <Stat icon={X} label="Perdidos" value={String(lostCount)} color="#e1493c" />
+          <Stat icon={TrendingUp} label="Conversão" value={`${conversionRate}%`} color="#8B5CF6" />
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            {hotCount > 0 && <span className="text-red-500 font-semibold">🔥 {hotCount}</span>}
+            {warmCount > 0 && <span className="text-yellow-500 font-semibold">🌡️ {warmCount}</span>}
+            {coldCount > 0 && <span className="text-blue-500 font-semibold">❄️ {coldCount}</span>}
           </div>
-          <Button
-            size="sm" variant="outline"
-            className={cn('gap-1.5 text-xs h-9 relative', showFilters && 'border-[#5B8CFF] text-[#5B8CFF]')}
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            Filtros
-            {activeFiltersCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#5B8CFF] text-white text-[9px] flex items-center justify-center">
-                {activeFiltersCount}
-              </span>
-            )}
-          </Button>
-          <Button
-            size="sm" className="text-white gap-1.5 text-xs bg-[#5B8CFF] hover:bg-[#4a7aee]"
-            onClick={() => { setDefaultStageId(visibleStages[0]?.id ?? stages[0]?.id); setShowNewLead(true) }}
-          >
-            <Plus className="w-3.5 h-3.5" /> Novo lead
-          </Button>
         </div>
       </div>
 
@@ -309,48 +348,126 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-xl border border-border">
-              <Select value={filterSeller} onValueChange={v => v && setFilterSeller(v)}>
-                <SelectTrigger className="h-8 text-xs w-44 gap-1">
-                  <Users className="w-3 h-3 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os vendedores</SelectItem>
-                  {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="p-4 bg-card border border-border rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filtros avançados</p>
+                {activeFiltersCount > 0 && (
+                  <button onClick={clearFilters} className="text-[11px] text-[#5B8CFF] hover:underline flex items-center gap-1 font-semibold">
+                    <X className="w-3 h-3" /> Limpar tudo ({activeFiltersCount})
+                  </button>
+                )}
+              </div>
 
-              <Select value={filterPeriod} onValueChange={v => v && setFilterPeriod(v)}>
-                <SelectTrigger className="h-8 text-xs w-44 gap-1">
-                  <CalendarDays className="w-3 h-3 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PERIOD_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Filter grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Status */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</label>
+                  <Select value={filterStatus} onValueChange={v => v && setFilterStatus(v as typeof filterStatus)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="open">Em andamento (abertos)</SelectItem>
+                      <SelectItem value="won">Ganhos</SelectItem>
+                      <SelectItem value="lost">Perdidos</SelectItem>
+                      <SelectItem value="all">Todos os status</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Select value={filterTemp} onValueChange={v => v && setFilterTemp(v)}>
-                <SelectTrigger className="h-8 text-xs w-48"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TEMP_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+                {/* Responsável */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Responsável</label>
+                  <Select value={filterSeller} onValueChange={v => v && setFilterSeller(v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os responsáveis</SelectItem>
+                      {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Select value={filterOrigin} onValueChange={v => v && setFilterOrigin(v)}>
-                <SelectTrigger className="h-8 text-xs w-44"><SelectValue placeholder="Origem" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as origens</SelectItem>
-                  {ALL_ORIGINS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                </SelectContent>
-              </Select>
+                {/* Período */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Data de criação</label>
+                  <Select value={filterPeriod} onValueChange={v => v && setFilterPeriod(v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PERIOD_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              {activeFiltersCount > 0 && (
-                <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground gap-1" onClick={clearFilters}>
-                  <X className="w-3 h-3" /> Limpar
-                </Button>
-              )}
+                {/* Temperatura */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Temperatura</label>
+                  <Select value={filterTemp} onValueChange={v => v && setFilterTemp(v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TEMP_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Origem */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Origem</label>
+                  <Select value={filterOrigin} onValueChange={v => v && setFilterOrigin(v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Origem" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as origens</SelectItem>
+                      {ALL_ORIGINS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Valor mínimo */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor mínimo (R$)</label>
+                  <div className="relative">
+                    <Banknote className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      value={filterValueMin}
+                      onChange={e => setFilterValueMin(e.target.value)}
+                      placeholder="1000"
+                      className="h-8 text-xs pl-7"
+                    />
+                  </div>
+                </div>
+
+                {/* Valor máximo */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor máximo (R$)</label>
+                  <div className="relative">
+                    <Banknote className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      value={filterValueMax}
+                      onChange={e => setFilterValueMax(e.target.value)}
+                      placeholder="50000"
+                      className="h-8 text-xs pl-7"
+                    />
+                  </div>
+                </div>
+
+                {/* Estagnados toggle */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estagnados</label>
+                  <button
+                    type="button"
+                    onClick={() => setFilterStuck(!filterStuck)}
+                    className={cn(
+                      'w-full h-8 px-2.5 rounded-md border flex items-center gap-1.5 text-xs font-medium transition-colors',
+                      filterStuck
+                        ? 'bg-[#F59E0B]/10 border-[#F59E0B] text-[#F59E0B]'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Pause className="w-3 h-3" />
+                    {filterStuck ? 'Mostrando estagnados (>14d)' : 'Mostrar só estagnados'}
+                  </button>
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
@@ -399,6 +516,20 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
           onCreated={handleLeadCreated}
         />
       )}
+    </div>
+  )
+}
+
+function Stat({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${color}15` }}>
+        <Icon className="w-3.5 h-3.5" style={{ color }} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-tight">{label}</p>
+        <p className="text-sm font-black tabular-nums leading-tight" style={{ color }}>{value}</p>
+      </div>
     </div>
   )
 }

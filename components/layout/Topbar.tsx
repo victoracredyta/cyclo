@@ -2,11 +2,12 @@
 
 import { usePathname } from 'next/navigation'
 import {
-  Search, Moon, Sun, ChevronDown,
+  Moon, Sun, ChevronDown,
   LayoutDashboard, Users, Kanban, Bot, Settings,
   Palette, LogOut, Zap, DollarSign, User,
 } from 'lucide-react'
 import { NotificationBell } from './NotificationBell'
+import { GlobalSearch } from './GlobalSearch'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -68,15 +69,13 @@ export function Topbar({ userName, userEmail, userAvatar, notificationCount = 0 
 
   return (
     <header className="h-14 flex items-center gap-3 px-4 border-b border-border bg-card shrink-0">
-      {/* Page title */}
-      <h1 className="text-[15px] font-semibold text-foreground flex-1 truncate">{title}</h1>
+      {/* Page title — compact, leaves room for search */}
+      <h1 className="text-[15px] font-semibold text-foreground truncate shrink-0">{title}</h1>
 
-      {/* Search shortcut */}
-      <button className="hidden md:flex items-center gap-2 text-sm text-muted-foreground bg-muted px-3 py-1.5 rounded-lg hover:bg-muted/80 transition-colors">
-        <Search className="w-3.5 h-3.5" />
-        <span>Buscar</span>
-        <kbd className="ml-1 text-[10px] bg-background border border-border rounded px-1 py-0.5">⌘K</kbd>
-      </button>
+      {/* Global search — centered/expandable */}
+      <div className="flex-1 flex justify-center">
+        <GlobalSearch />
+      </div>
 
       {/* Dark mode toggle */}
       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={toggleDarkMode}>
