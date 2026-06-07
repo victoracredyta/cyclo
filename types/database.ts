@@ -40,6 +40,7 @@ export interface Database {
       clients: TableDef<{
         id: string
         organization_id: string
+        segment_id: string | null
         name: string
         sector: string | null
         logo_url: string | null
@@ -89,18 +90,47 @@ export interface Database {
         completed_at: string | null
         created_at: string
       }>
-      pipeline_stages: TableDef<{
+      funnels: TableDef<{
+        id: string
+        organization_id: string
+        name: string
+        description: string | null
+        is_default: boolean
+        created_at: string
+      }>
+      funnel_users: TableDef<{
+        funnel_id: string
+        user_id: string
+      }>
+      segments: TableDef<{
         id: string
         organization_id: string
         name: string
         color: string
+        created_at: string
+      }>
+      lead_rotation_config: TableDef<{
+        organization_id: string
+        enabled: boolean
+        user_ids: string[]
+        last_assigned_index: number
+      }>
+      pipeline_stages: TableDef<{
+        id: string
+        organization_id: string
+        funnel_id: string | null
+        name: string
+        color: string
         order_index: number
+        description: string | null
         created_at: string
       }>
       leads: TableDef<{
         id: string
         organization_id: string
         stage_id: string | null
+        funnel_id: string | null
+        segment_id: string | null
         name: string
         company: string | null
         value: number | null
@@ -351,3 +381,7 @@ export type Message = Database['public']['Tables']['messages']['Row']
 export type Competitor = Database['public']['Tables']['competitors']['Row']
 export type Invoice = Database['public']['Tables']['invoices']['Row']
 export type AIConversation = Database['public']['Tables']['ai_conversations']['Row']
+export type Funnel = Database['public']['Tables']['funnels']['Row']
+export type FunnelUser = Database['public']['Tables']['funnel_users']['Row']
+export type Segment = Database['public']['Tables']['segments']['Row']
+export type LeadRotationConfig = Database['public']['Tables']['lead_rotation_config']['Row']

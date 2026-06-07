@@ -53,7 +53,13 @@ const navGroups = [
   },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  orgLogoUrl?: string | null
+  orgName?: string | null
+  orgTagline?: string | null
+}
+
+export function Sidebar({ orgLogoUrl, orgName, orgTagline }: SidebarProps) {
   const pathname = usePathname()
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
 
@@ -69,12 +75,16 @@ export function Sidebar() {
         sidebarCollapsed ? 'justify-center' : 'gap-2.5'
       )}>
         <div className="relative shrink-0">
-          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7">
-            <circle cx="16" cy="16" r="12" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2.5" fill="none"/>
-            <path d="M16 4 A12 12 0 0 1 28 16" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-            <path d="M26.5 12.5 L28 16 L24.5 15" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            <circle cx="16" cy="16" r="2.5" fill="var(--brand-primary,#5B8CFF)"/>
-          </svg>
+          {orgLogoUrl ? (
+            <img src={orgLogoUrl} alt="Logo" className="w-7 h-7 object-contain rounded" />
+          ) : (
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7">
+              <circle cx="16" cy="16" r="12" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2.5" fill="none"/>
+              <path d="M16 4 A12 12 0 0 1 28 16" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+              <path d="M26.5 12.5 L28 16 L24.5 15" stroke="var(--brand-primary,#5B8CFF)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <circle cx="16" cy="16" r="2.5" fill="var(--brand-primary,#5B8CFF)"/>
+            </svg>
+          )}
         </div>
         <AnimatePresence>
           {!sidebarCollapsed && (
@@ -85,8 +95,10 @@ export function Sidebar() {
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <span className="text-white font-bold text-base tracking-tight whitespace-nowrap">CYCLO</span>
-              <p className="text-[9px] font-medium -mt-0.5 whitespace-nowrap" style={{ color: 'var(--brand-primary,#5B8CFF)' }}>by ACREDYTA</p>
+              <span className="text-white font-bold text-base tracking-tight whitespace-nowrap">{orgName || 'CYCLO'}</span>
+              {orgTagline && (
+                <p className="text-[9px] font-medium -mt-0.5 whitespace-nowrap truncate max-w-[140px]" style={{ color: 'var(--brand-primary,#5B8CFF)' }}>{orgTagline}</p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

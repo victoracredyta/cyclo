@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -20,6 +20,7 @@ const SECTORS = ['E-commerce', 'Saúde', 'Educação', 'Imobiliário', 'Gastrono
 const schema = z.object({
   name: z.string().min(2, 'Nome obrigatório'),
   sector: z.string().optional(),
+  segment_id: z.string().optional(),
   email: z.string().email('Email inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
   mrr: z.string().optional(),
@@ -29,6 +30,8 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
+type SegmentOption = { id: string; name: string; color: string }
+
 interface NewClientModalProps {
   users: Array<{ id: string; full_name: string | null; avatar_url: string | null }>
   onClose: () => void
@@ -37,6 +40,14 @@ interface NewClientModalProps {
 export function NewClientModal({ users, onClose }: NewClientModalProps) {
   const router = useRouter()
   const [services, setServices] = useState<string[]>([])
+  const [segments, setSegments] = useState<SegmentOption[]>([])
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('segments').select('id, name, color').order('name').then(({ data }) => {
+      if (data) setSegments(data)
+    })
+  }, [])
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
@@ -54,6 +65,7 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
       organization_id: org.organization_id,
       name: data.name,
       sector: data.sector || undefined,
+      segment_id: data.segment_id || undefined,
       email: data.email || undefined,
       phone: data.phone || undefined,
       mrr: Number(data.mrr) || 0,
@@ -91,6 +103,19 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
                 </SelectContent>
               </Select>
             </div>
+            {segments.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-sm">Segmento</Label>
+                <Select<string> onValueChange={v => setValue('segment_id', v ?? undefined)}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {segments.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-sm">MRR (R$)</Label>
               <Input type="number" placeholder="3500" {...register('mrr')} />

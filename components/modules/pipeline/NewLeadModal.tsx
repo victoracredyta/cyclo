@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -15,6 +15,9 @@ import { toast } from 'sonner'
 import type { PipelineStage } from '@/types/database'
 import type { LeadWithResponsible } from './PipelineBoard'
 
+type SegmentOption = { id: string; name: string; color: string }
+type FunnelOption = { id: string; name: string; is_default: boolean }
+
 const schema = z.object({
   name: z.string().min(2, 'Nome obrigatório'),
   company: z.string().optional(),
@@ -26,6 +29,8 @@ const schema = z.object({
   customOrigin: z.string().optional(),
   priority: z.enum(['alta', 'media', 'baixa']),
   stage_id: z.string(),
+  funnel_id: z.string().optional(),
+  segment_id: z.string().optional(),
   responsible_id: z.string().optional(),
   next_action: z.string().optional(),
 })
@@ -49,6 +54,8 @@ interface NewLeadModalProps {
   stages: PipelineStage[]
   users: Array<{ id: string; full_name: string | null; avatar_url: string | null }>
   defaultStageId?: string
+  defaultFunnelId?: string
+  funnels?: FunnelOption[]
   onClose: () => void
   onCreated: (lead: LeadWithResponsible) => void
 }
@@ -83,14 +90,24 @@ function CustomSelect({
   )
 }
 
-export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated }: NewLeadModalProps) {
+export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, funnels = [], onClose, onCreated }: NewLeadModalProps) {
   const initialStageId = defaultStageId ?? stages[0]?.id ?? ''
   const [stageId, setStageId] = useState(initialStageId)
   const [responsibleId, setResponsibleId] = useState('')
   const [selectedOrigin, setSelectedOrigin] = useState('')
   const [temp, setTemp] = useState<'alta' | 'media' | 'baixa'>('media')
+  const [selectedFunnelId, setSelectedFunnelId] = useState(defaultFunnelId ?? '')
+  const [selectedSegmentId, setSelectedSegmentId] = useState('')
+  const [segments, setSegments] = useState<SegmentOption[]>([])
   const [cnpjInput, setCnpjInput] = useState('')
   const [cnpjLoading, setCnpjLoading] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('segments').select('id, name, color').order('name').then(({ data }) => {
+      if (data) setSegments(data)
+    })
+  }, [])
 
   const { register, handleSubmit, setValue, getValues, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -134,6 +151,8 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
     const { data: lead, error } = await supabase.from('leads').insert({
       organization_id: me.organization_id,
       stage_id: data.stage_id,
+      funnel_id: data.funnel_id || undefined,
+      segment_id: data.segment_id || undefined,
       name: data.name,
       company: data.company || undefined,
       value: data.value ? Number(data.value) : undefined,
@@ -273,6 +292,45 @@ export function NewLeadModal({ stages, users, defaultStageId, onClose, onCreated
                 ))}
               </CustomSelect>
             </div>
+
+            {funnels.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-sm">Funil</Label>
+                <CustomSelect
+                  value={selectedFunnelId}
+                  displayText={funnels.find(f => f.id === selectedFunnelId)?.name ?? null}
+                  placeholder="Selecione o funil"
+                  onValueChange={v => { if (!v) return; setSelectedFunnelId(v); setValue('funnel_id', v) }}
+                >
+                  {funnels.map(f => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.name}{f.is_default ? ' (padrão)' : ''}
+                    </SelectItem>
+                  ))}
+                </CustomSelect>
+              </div>
+            )}
+
+            {segments.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-sm">Segmento</Label>
+                <CustomSelect
+                  value={selectedSegmentId}
+                  displayText={segments.find(s => s.id === selectedSegmentId)?.name ?? null}
+                  placeholder="Selecione o segmento"
+                  onValueChange={v => { if (!v) return; setSelectedSegmentId(v); setValue('segment_id', v) }}
+                >
+                  {segments.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                        {s.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </CustomSelect>
+              </div>
+            )}
 
             <div className="col-span-2 space-y-1.5">
               <Label className="text-sm">Próxima ação</Label>

@@ -68,25 +68,22 @@ const PERMISSION_DESCRIPTIONS: Record<string, { title: string; items: string[] }
   },
 }
 
-const FUNNEL_TYPES = ['Vendas', 'Marketing', 'Projetos', 'Prospecção', 'Pré-Vendas', 'Pós-Vendas', 'Administrativo']
-
 interface FunnelStage {
   id: string
+  funnel_id: string | null
   name: string
   color: string
   order_index: number
-  description?: string
+  description: string | null
 }
 
 interface Funnel {
   id: string
   name: string
-  type: string
-  visibility: 'publico' | 'privado' | 'por_usuario'
-  responsible_id: string
-  user_ids: string[]
-  description: string
+  description: string | null
+  is_default: boolean
   stages: FunnelStage[]
+  user_ids: string[]
 }
 
 interface LeadTag {
@@ -98,14 +95,12 @@ interface LeadTag {
 interface Segment {
   id: string
   name: string
+  color: string
 }
 
 const STAGE_PALETTE = ['#5B8CFF', '#12B981', '#F59E0B', '#8B5CF6', '#e1493c', '#06B6D4', '#F97316', '#EC4899', '#14B8A6', '#6B7280']
 
-const LOCAL_FUNNELS_KEY = 'cyclo_funnels'
 const LOCAL_TAGS_KEY = 'cyclo_lead_tags'
-const LOCAL_SEGMENTS_KEY = 'cyclo_segments'
-const LOCAL_ROTATION_KEY = 'cyclo_lead_rotation'
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -128,42 +123,37 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const router = useRouter()
   const [tab, setTab] = useState<'perfil' | 'equipe' | 'funis' | 'tags' | 'distribuicao' | 'segmentos' | 'notificacoes' | 'seguranca'>('perfil')
 
-  // --- Pipeline stages ---
-  const [pipelineStages, setPipelineStages] = useState<Array<{ id: string; name: string; color: string; order_index: number }>>([])
-  const [newStageName, setNewStageName] = useState('')
-  const [newStageColor, setNewStageColor] = useState('#5B8CFF')
-  const [newStageCustomColor, setNewStageCustomColor] = useState('#5B8CFF')
-  const [stagesLoaded, setStagesLoaded] = useState(false)
-  const [loadingStages, setLoadingStages] = useState(false)
-  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null)
-
-  // --- Funnels ---
+  // --- Funnels (Supabase) ---
   const [funnels, setFunnels] = useState<Funnel[]>([])
+  const [loadingFunnels, setLoadingFunnels] = useState(false)
   const [showNewFunnel, setShowNewFunnel] = useState(false)
   const [editingFunnel, setEditingFunnel] = useState<Funnel | null>(null)
-  const [newFunnel, setNewFunnel] = useState<Omit<Funnel, 'id'>>({
-    name: '', type: 'Vendas', visibility: 'publico', responsible_id: '', user_ids: [], description: '', stages: [],
-  })
-  const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null)
-  const [addingStageToFunnelId, setAddingStageToFunnelId] = useState<string | null>(null)
-  const [funnelStageName, setFunnelStageName] = useState('')
-  const [funnelStageColor, setFunnelStageColor] = useState('#5B8CFF')
+  const [newFunnelName, setNewFunnelName] = useState('')
+  const [newFunnelDesc, setNewFunnelDesc] = useState('')
+  const [newFunnelDefault, setNewFunnelDefault] = useState(false)
+  const [newFunnelUserIds, setNewFunnelUserIds] = useState<string[]>([])
   const [funnelFilter, setFunnelFilter] = useState('')
   const [stageInputByFunnel, setStageInputByFunnel] = useState<Record<string, string>>({})
   const [editingStage, setEditingStage] = useState<{ funnelId: string; stage: FunnelStage } | null>(null)
+  const [savingFunnel, setSavingFunnel] = useState(false)
+  const [funnelsLoaded, setFunnelsLoaded] = useState(false)
 
   // --- Tags ---
   const [tags, setTags] = useState<LeadTag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#5B8CFF')
 
-  // --- Segments ---
+  // --- Segments (Supabase) ---
   const [segments, setSegments] = useState<Segment[]>([])
+  const [loadingSegments, setLoadingSegments] = useState(false)
   const [newSegmentName, setNewSegmentName] = useState('')
+  const [newSegmentColor, setNewSegmentColor] = useState('#5B8CFF')
 
-  // --- Rotation ---
+  // --- Rotation (Supabase) ---
   const [rotationEnabled, setRotationEnabled] = useState(false)
   const [rotationUserIds, setRotationUserIds] = useState<string[]>([])
+  const [savingRotation, setSavingRotation] = useState(false)
+  const [rotationLoaded, setRotationLoaded] = useState(false)
 
   // --- Other ---
   const [orgUsers, setOrgUsers] = useState(initialUsers)
@@ -178,136 +168,198 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
-  // Load from localStorage
+  // Load tags from localStorage
   useEffect(() => {
     try {
-      const f = localStorage.getItem(LOCAL_FUNNELS_KEY)
-      if (f) setFunnels((JSON.parse(f) as Funnel[]).map(fn => ({ ...fn, stages: fn.stages ?? [] })))
       const t = localStorage.getItem(LOCAL_TAGS_KEY)
       if (t) setTags(JSON.parse(t))
-      const s = localStorage.getItem(LOCAL_SEGMENTS_KEY)
-      if (s) setSegments(JSON.parse(s))
-      const r = localStorage.getItem(LOCAL_ROTATION_KEY)
-      if (r) {
-        const parsed = JSON.parse(r)
-        setRotationEnabled(parsed.enabled ?? false)
-        setRotationUserIds(parsed.user_ids ?? [])
-      }
     } catch {}
   }, [])
-
-  const saveFunnels = (updated: Funnel[]) => {
-    setFunnels(updated)
-    localStorage.setItem(LOCAL_FUNNELS_KEY, JSON.stringify(updated))
-  }
 
   const saveTags = (updated: LeadTag[]) => {
     setTags(updated)
     localStorage.setItem(LOCAL_TAGS_KEY, JSON.stringify(updated))
   }
 
-  const saveSegments = (updated: Segment[]) => {
-    setSegments(updated)
-    localStorage.setItem(LOCAL_SEGMENTS_KEY, JSON.stringify(updated))
+  const loadFunnels = async () => {
+    if (funnelsLoaded) return
+    setLoadingFunnels(true)
+    const supabase = createClient()
+    const [{ data: funnelRows }, { data: stageRows }, { data: fuRows }] = await Promise.all([
+      supabase.from('funnels').select('*').order('created_at'),
+      supabase.from('pipeline_stages').select('*').order('order_index'),
+      supabase.from('funnel_users').select('funnel_id, user_id'),
+    ])
+    const built: Funnel[] = (funnelRows ?? []).map(f => ({
+      id: f.id,
+      name: f.name,
+      description: f.description,
+      is_default: f.is_default,
+      stages: (stageRows ?? []).filter(s => s.funnel_id === f.id),
+      user_ids: (fuRows ?? []).filter(fu => fu.funnel_id === f.id).map(fu => fu.user_id),
+    }))
+    setFunnels(built)
+    setFunnelsLoaded(true)
+    setLoadingFunnels(false)
   }
 
-  const saveRotation = (enabled: boolean, userIds: string[]) => {
-    setRotationEnabled(enabled)
-    setRotationUserIds(userIds)
-    localStorage.setItem(LOCAL_ROTATION_KEY, JSON.stringify({ enabled, user_ids: userIds }))
+  const loadSegments = async () => {
+    setLoadingSegments(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('segments').select('*').order('name')
+    setSegments((data ?? []).map(s => ({ id: s.id, name: s.name, color: s.color })))
+    setLoadingSegments(false)
   }
 
-  const loadStages = async () => {
-    if (stagesLoaded) return
-    setLoadingStages(true)
+  const loadRotation = async () => {
+    if (rotationLoaded) return
+    const supabase = createClient()
+    const { data } = await supabase.from('lead_rotation_config').select('*').maybeSingle()
+    if (data) {
+      setRotationEnabled(data.enabled)
+      setRotationUserIds(data.user_ids ?? [])
+    }
+    setRotationLoaded(true)
+  }
+
+  const createFunnel = async () => {
+    if (!newFunnelName.trim()) return
+    setSavingFunnel(true)
     const supabase = createClient()
     const { data: me } = await supabase.from('users').select('organization_id').single()
-    const { data } = await supabase
-      .from('pipeline_stages')
-      .select('*')
-      .eq('organization_id', me?.organization_id ?? '')
-      .order('order_index')
-    setPipelineStages(data ?? [])
-    setStagesLoaded(true)
-    setLoadingStages(false)
-  }
-
-  const addStage = async () => {
-    if (!newStageName.trim()) return
-    const finalColor = STAGE_PALETTE.includes(newStageColor) ? newStageColor : newStageCustomColor
-    const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) { toast.error('Organização não encontrada'); return }
-    const nextOrder = pipelineStages.length > 0 ? Math.max(...pipelineStages.map(s => s.order_index)) + 1 : 0
-    const { data, error } = await supabase.from('pipeline_stages').insert({
+    if (!me?.organization_id) { toast.error('Org não encontrada'); setSavingFunnel(false); return }
+    const { data: f, error } = await supabase.from('funnels').insert({
       organization_id: me.organization_id,
-      name: newStageName.trim(),
-      color: finalColor,
-      order_index: nextOrder,
+      name: newFunnelName.trim(),
+      description: newFunnelDesc || null,
+      is_default: newFunnelDefault,
     }).select().single()
-    if (error) { toast.error(`Erro ao criar etapa: ${error.message}`); return }
-    setPipelineStages(prev => [...prev, data as typeof pipelineStages[0]])
-    setNewStageName('')
-    toast.success('Etapa criada!')
-  }
-
-  const deleteStage = async (id: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.from('pipeline_stages').delete().eq('id', id)
-    if (error) { toast.error('Erro ao remover etapa'); return }
-    setPipelineStages(prev => prev.filter(s => s.id !== id))
-    toast.success('Etapa removida')
-  }
-
-  const createFunnel = () => {
-    if (!newFunnel.name.trim()) return
-    const created: Funnel = { ...newFunnel, id: crypto.randomUUID() }
-    saveFunnels([...funnels, created])
-    setNewFunnel({ name: '', type: 'Vendas', visibility: 'publico', responsible_id: '', user_ids: [], description: '', stages: [] })
+    if (error || !f) { toast.error('Erro ao criar funil'); setSavingFunnel(false); return }
+    const userIdsToInsert = newFunnelUserIds.length > 0 ? newFunnelUserIds : orgUsers.map(u => u.id)
+    if (userIdsToInsert.length > 0) {
+      await supabase.from('funnel_users').insert(userIdsToInsert.map(uid => ({ funnel_id: f.id, user_id: uid })))
+    }
+    const newF: Funnel = { id: f.id, name: f.name, description: f.description, is_default: f.is_default, stages: [], user_ids: userIdsToInsert }
+    setFunnels(prev => [...prev, newF])
+    setNewFunnelName(''); setNewFunnelDesc(''); setNewFunnelDefault(false); setNewFunnelUserIds([])
     setShowNewFunnel(false)
-    setExpandedFunnelId(created.id)
-    toast.success(`Funil "${created.name}" criado! Agora adicione as etapas.`)
+    setSavingFunnel(false)
+    toast.success(`Funil "${f.name}" criado!`)
   }
 
-  const updateFunnel = (updated: Funnel) => {
-    saveFunnels(funnels.map(f => f.id === updated.id ? updated : f))
+  const updateFunnel = async (updated: Funnel) => {
+    setSavingFunnel(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('funnels').update({
+      name: updated.name, description: updated.description, is_default: updated.is_default,
+    }).eq('id', updated.id)
+    if (error) { toast.error('Erro ao atualizar funil'); setSavingFunnel(false); return }
+    await supabase.from('funnel_users').delete().eq('funnel_id', updated.id)
+    if (updated.user_ids.length > 0) {
+      await supabase.from('funnel_users').insert(updated.user_ids.map(uid => ({ funnel_id: updated.id, user_id: uid })))
+    }
+    setFunnels(prev => prev.map(f => f.id === updated.id ? updated : f))
     setEditingFunnel(null)
+    setSavingFunnel(false)
     toast.success('Funil atualizado!')
   }
 
-  const addFunnelStage = (funnelId: string, stageName?: string) => {
-    const name = (stageName ?? funnelStageName).trim()
+  const deleteFunnel = async (id: string) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('funnels').delete().eq('id', id)
+    if (error) { toast.error('Erro ao remover funil'); return }
+    setFunnels(prev => prev.filter(f => f.id !== id))
+    toast.success('Funil removido')
+  }
+
+  const addFunnelStage = async (funnelId: string, stageName?: string) => {
+    const name = (stageName ?? stageInputByFunnel[funnelId] ?? '').trim()
     if (!name) return
+    const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    if (!me?.organization_id) return
     const funnel = funnels.find(f => f.id === funnelId)
-    if (!funnel) return
-    const nextOrder = funnel.stages.length > 0 ? Math.max(...funnel.stages.map(s => s.order_index)) + 1 : 0
-    const newStage: FunnelStage = {
-      id: crypto.randomUUID(),
+    const nextOrder = funnel ? (funnel.stages.length > 0 ? Math.max(...funnel.stages.map(s => s.order_index)) + 1 : 0) : 0
+    const { data, error } = await supabase.from('pipeline_stages').insert({
+      organization_id: me.organization_id,
+      funnel_id: funnelId,
       name,
-      color: funnelStageColor,
+      color: '#5B8CFF',
       order_index: nextOrder,
-    }
-    saveFunnels(funnels.map(f => f.id === funnelId ? { ...f, stages: [...f.stages, newStage] } : f))
+    }).select().single()
+    if (error || !data) { toast.error('Erro ao criar etapa'); return }
+    const newStage: FunnelStage = { id: data.id, funnel_id: funnelId, name: data.name, color: data.color, order_index: data.order_index, description: data.description }
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: [...f.stages, newStage] } : f))
     setStageInputByFunnel(prev => ({ ...prev, [funnelId]: '' }))
-    setFunnelStageName('')
     toast.success(`Etapa "${name}" adicionada!`)
   }
 
-  const updateFunnelStage = (funnelId: string, updatedStage: FunnelStage) => {
-    saveFunnels(funnels.map(f => f.id === funnelId ? { ...f, stages: f.stages.map(s => s.id === updatedStage.id ? updatedStage : s) } : f))
+  const updateFunnelStage = async (funnelId: string, updatedStage: FunnelStage) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('pipeline_stages').update({
+      name: updatedStage.name, color: updatedStage.color, description: updatedStage.description,
+    }).eq('id', updatedStage.id)
+    if (error) { toast.error('Erro ao atualizar etapa'); return }
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: f.stages.map(s => s.id === updatedStage.id ? updatedStage : s) } : f))
     setEditingStage(null)
     toast.success('Etapa atualizada!')
   }
 
-  const duplicateFunnel = (f: Funnel) => {
-    const copy: Funnel = { ...f, id: crypto.randomUUID(), name: `${f.name} (cópia)`, stages: [] }
-    saveFunnels([...funnels, copy])
-    toast.success(`Funil "${copy.name}" duplicado! Adicione as etapas.`)
+  const deleteFunnelStage = async (funnelId: string, stageId: string) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('pipeline_stages').delete().eq('id', stageId)
+    if (error) { toast.error('Erro ao remover etapa'); return }
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: f.stages.filter(s => s.id !== stageId) } : f))
+    toast.success('Etapa removida')
   }
 
-  const deleteFunnelStage = (funnelId: string, stageId: string) => {
-    saveFunnels(funnels.map(f => f.id === funnelId ? { ...f, stages: f.stages.filter(s => s.id !== stageId) } : f))
-    toast.success('Etapa removida')
+  const reorderFunnelStage = async (funnelId: string, stageId: string, direction: 'up' | 'down') => {
+    const funnel = funnels.find(f => f.id === funnelId)
+    if (!funnel) return
+    const idx = funnel.stages.findIndex(s => s.id === stageId)
+    const swapIdx = direction === 'down' ? idx + 1 : idx - 1
+    if (swapIdx < 0 || swapIdx >= funnel.stages.length) return
+    const arr = [...funnel.stages]
+    ;[arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]]
+    const reordered = arr.map((s, i) => ({ ...s, order_index: i }))
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: reordered } : f))
+    const supabase = createClient()
+    await Promise.all(reordered.map(s => supabase.from('pipeline_stages').update({ order_index: s.order_index }).eq('id', s.id)))
+  }
+
+  const createSegment = async () => {
+    if (!newSegmentName.trim()) return
+    const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    if (!me?.organization_id) return
+    const { data, error } = await supabase.from('segments').insert({
+      organization_id: me.organization_id, name: newSegmentName.trim(), color: newSegmentColor,
+    }).select().single()
+    if (error || !data) { toast.error('Erro ao criar segmento'); return }
+    setSegments(prev => [...prev, { id: data.id, name: data.name, color: data.color }])
+    setNewSegmentName('')
+    toast.success('Segmento criado!')
+  }
+
+  const deleteSegment = async (id: string) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('segments').delete().eq('id', id)
+    if (error) { toast.error('Erro ao remover segmento'); return }
+    setSegments(prev => prev.filter(s => s.id !== id))
+    toast.success('Segmento removido')
+  }
+
+  const saveRotation = async (enabled: boolean, userIds: string[]) => {
+    setRotationEnabled(enabled)
+    setRotationUserIds(userIds)
+    setSavingRotation(true)
+    const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    if (!me?.organization_id) { setSavingRotation(false); return }
+    await supabase.from('lead_rotation_config').upsert({
+      organization_id: me.organization_id, enabled, user_ids: userIds,
+    }, { onConflict: 'organization_id' })
+    setSavingRotation(false)
   }
 
   const uploadAvatar = async (file: File) => {
@@ -346,26 +398,12 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     setUploadingAvatar(false)
   }
 
-  const deleteFunnel = (id: string) => {
-    saveFunnels(funnels.filter(f => f.id !== id))
-    if (selectedFunnelId === id) setSelectedFunnelId(null)
-    toast.success('Funil removido')
-  }
-
   const createTag = () => {
     if (!newTagName.trim()) return
     const tag: LeadTag = { id: crypto.randomUUID(), name: newTagName.trim(), color: newTagColor }
     saveTags([...tags, tag])
     setNewTagName('')
     toast.success('Tag criada!')
-  }
-
-  const createSegment = () => {
-    if (!newSegmentName.trim()) return
-    const seg: Segment = { id: crypto.randomUUID(), name: newSegmentName.trim() }
-    saveSegments([...segments, seg])
-    setNewSegmentName('')
-    toast.success('Segmento criado!')
   }
 
   const saveProfile = async () => {
@@ -402,10 +440,10 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const TABS: { value: 'perfil' | 'equipe' | 'funis' | 'tags' | 'distribuicao' | 'segmentos' | 'notificacoes' | 'seguranca'; label: string; Icon: React.ElementType; onSelect?: () => void }[] = [
     { value: 'perfil', label: 'Perfil', Icon: User },
     { value: 'equipe', label: 'Equipe', Icon: Users },
-    { value: 'funis', label: 'Funis', Icon: Kanban, onSelect: loadStages },
+    { value: 'funis', label: 'Funis', Icon: Kanban, onSelect: loadFunnels },
     { value: 'tags', label: 'Tags', Icon: Tag },
-    { value: 'distribuicao', label: 'Distribuição', Icon: Shuffle },
-    { value: 'segmentos', label: 'Segmentos', Icon: Building2 },
+    { value: 'distribuicao', label: 'Distribuição', Icon: Shuffle, onSelect: loadRotation },
+    { value: 'segmentos', label: 'Segmentos', Icon: Building2, onSelect: loadSegments },
     { value: 'notificacoes', label: 'Notificações', Icon: Bell },
     { value: 'seguranca', label: 'Segurança', Icon: Shield },
   ]
@@ -607,7 +645,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-sm">Funis e etapas</h3>
-              <p className="text-xs text-muted-foreground">Gerencie os funis e suas etapas de forma simples para adaptar ao seu processo de vendas.</p>
+              <p className="text-xs text-muted-foreground">Funis são compartilhados com o Pipeline de Vendas — um único mundo.</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -620,7 +658,11 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
             </div>
           </div>
 
-          {funnels.length === 0 ? (
+          {loadingFunnels ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando funis...
+            </div>
+          ) : funnels.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground text-sm border border-dashed border-border rounded-xl">
               <Kanban className="w-10 h-10 mx-auto mb-3 opacity-20" />
               <p className="font-medium">Nenhum funil criado ainda</p>
@@ -629,7 +671,6 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
           ) : (
             <div className="overflow-x-auto pb-2">
             <div className="flex gap-4 min-w-max">
-              {/* ── BOARD ── */}
               {funnels
                 .filter(f => !funnelFilter || f.name.toLowerCase().includes(funnelFilter.toLowerCase()))
                 .map(f => {
@@ -639,28 +680,26 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                       {/* Column header */}
                       <div className="px-3 pt-3 pb-2 border-b border-border">
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] text-muted-foreground font-medium">Funil com {f.stages.length} etapa{f.stages.length !== 1 ? 's' : ''}</span>
+                          <span className="text-[10px] text-muted-foreground font-medium">{f.stages.length} etapa{f.stages.length !== 1 ? 's' : ''} · {f.user_ids.length} usuário{f.user_ids.length !== 1 ? 's' : ''}</span>
                           <div className="flex items-center gap-1">
-                            <button onClick={() => duplicateFunnel(f)} title="Duplicar funil" className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors">
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
                             <button onClick={() => setEditingFunnel({ ...f })} title="Editar funil" className="p-1.5 text-white rounded transition-colors" style={{ background: '#12B981' }}>
                               <Edit3 className="w-3 h-3" />
                             </button>
-                            <button onClick={() => deleteFunnel(f.id)} title="Excluir funil" className="p-1.5 text-white rounded transition-colors" style={{ background: '#e1493c' }}>
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                            {!f.is_default && (
+                              <button onClick={() => deleteFunnel(f.id)} title="Excluir funil" className="p-1.5 text-white rounded transition-colors" style={{ background: '#e1493c' }}>
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
                         </div>
                         <p className="font-bold text-sm text-foreground leading-tight">{f.name}</p>
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">{f.type}</span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded font-medium" style={{
-                            backgroundColor: f.visibility === 'publico' ? '#12B98120' : f.visibility === 'por_usuario' ? '#5B8CFF20' : '#6B728020',
-                            color: f.visibility === 'publico' ? '#12B981' : f.visibility === 'por_usuario' ? '#5B8CFF' : '#6B7280'
-                          }}>
-                            {f.visibility === 'publico' ? 'Público' : f.visibility === 'privado' ? 'Privado' : 'Por usuário'}
-                          </span>
+                          {f.is_default && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-[#12B981]/15 text-[#12B981]">Padrão</span>
+                          )}
+                          {f.description && (
+                            <span className="text-[9px] text-muted-foreground truncate max-w-[160px]">{f.description}</span>
+                          )}
                         </div>
                       </div>
 
@@ -669,7 +708,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                         <Input
                           value={stageInput}
                           onChange={e => setStageInputByFunnel(prev => ({ ...prev, [f.id]: e.target.value }))}
-                          placeholder="Nova etapa"
+                          placeholder="Nova etapa..."
                           className="h-7 text-xs flex-1 bg-card"
                           onKeyDown={e => { if (e.key === 'Enter') addFunnelStage(f.id, stageInput) }}
                         />
@@ -679,7 +718,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                           className="h-7 px-2.5 text-white text-xs rounded-md font-semibold disabled:opacity-40 transition-opacity shrink-0"
                           style={{ background: '#12B981' }}
                         >
-                          + Adicionar
+                          + Add
                         </button>
                       </div>
 
@@ -692,7 +731,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                             <p className="text-[10px] text-muted-foreground mt-0.5">Use o campo acima para adicionar.</p>
                           </div>
                         ) : (
-                          f.stages.map((stage, i) => (
+                          f.stages.map((stage) => (
                             <div key={stage.id} className="flex items-stretch border-b border-border last:border-0 bg-card hover:bg-muted/20 transition-colors group">
                               <div className="w-1 shrink-0" style={{ background: stage.color }} />
                               <div className="flex-1 px-3 py-2.5 min-w-0">
@@ -701,15 +740,15 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                               </div>
                               <div className="flex flex-col items-center justify-center gap-0.5 px-1.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                 <button
+                                  title="Mover para cima"
+                                  onClick={() => reorderFunnelStage(f.id, stage.id, 'up')}
+                                  className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors rotate-180"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
                                   title="Mover para baixo"
-                                  onClick={() => {
-                                    const idx = f.stages.findIndex(s => s.id === stage.id)
-                                    if (idx < f.stages.length - 1) {
-                                      const arr = [...f.stages]
-                                      ;[arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]]
-                                      saveFunnels(funnels.map(fn => fn.id === f.id ? { ...fn, stages: arr } : fn))
-                                    }
-                                  }}
+                                  onClick={() => reorderFunnelStage(f.id, stage.id, 'down')}
                                   className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors"
                                 >
                                   <ChevronDown className="w-3.5 h-3.5" />
@@ -777,72 +816,58 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
               <DialogHeader><DialogTitle>Editar funil</DialogTitle></DialogHeader>
               {editingFunnel && (
                 <div className="space-y-4 mt-2">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className="text-xs font-semibold">Nome *</Label>
-                      <Input value={editingFunnel.name} onChange={e => setEditingFunnel(p => p ? { ...p, name: e.target.value } : p)} className="h-9 text-sm" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Responsável pelo funil</Label>
-                      <Select value={editingFunnel.responsible_id} onValueChange={v => { if (v) setEditingFunnel(p => p ? { ...p, responsible_id: v } : p) }}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                        <SelectContent>{orgUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.email ?? '—'}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Tipo de funil</Label>
-                      <Select value={editingFunnel.type} onValueChange={v => { if (v) setEditingFunnel(p => p ? { ...p, type: v } : p) }}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                        <SelectContent>{FUNNEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className="text-xs font-semibold">Visibilidade</Label>
-                      <Select value={editingFunnel.visibility} onValueChange={v => { if (v) setEditingFunnel(p => p ? { ...p, visibility: v as Funnel['visibility'] } : p) }}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="publico">Público — todos podem ver</SelectItem>
-                          <SelectItem value="privado">Privado — somente o responsável pode ver</SelectItem>
-                          <SelectItem value="por_usuario">Por usuário — somente alguns usuários podem ver</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {editingFunnel.visibility === 'por_usuario' && (
-                      <div className="col-span-2 space-y-2">
-                        <Label className="text-xs font-semibold">Informe os usuários que terão acesso a este funil:</Label>
-                        <div className="flex flex-wrap gap-2 p-3 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-lg min-h-[48px]">
-                          {orgUsers.map(u => {
-                            const sel = editingFunnel.user_ids.includes(u.id)
-                            return (
-                              <button key={u.id}
-                                onClick={() => setEditingFunnel(p => p ? { ...p, user_ids: sel ? p.user_ids.filter(id => id !== u.id) : [...p.user_ids, u.id] } : p)}
-                                className={cn('flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-all font-medium',
-                                  sel ? 'bg-foreground text-background border-transparent' : 'border-border text-muted-foreground hover:border-foreground/40')}>
-                                {sel && <X className="w-2.5 h-2.5" />}
-                                {u.full_name ?? u.email}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className="text-xs font-semibold">Descrição</Label>
-                      <textarea
-                        value={editingFunnel.description}
-                        onChange={e => setEditingFunnel(p => p ? { ...p, description: e.target.value } : p)}
-                        placeholder="Descrição do funil..."
-                        rows={3}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#5B8CFF]/30 focus:border-[#5B8CFF]"
-                      />
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Nome *</Label>
+                    <Input value={editingFunnel.name} onChange={e => setEditingFunnel(p => p ? { ...p, name: e.target.value } : p)} className="h-9 text-sm" autoFocus />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Descrição</Label>
+                    <textarea
+                      value={editingFunnel.description ?? ''}
+                      onChange={e => setEditingFunnel(p => p ? { ...p, description: e.target.value || null } : p)}
+                      placeholder="Descrição do funil..."
+                      rows={2}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#5B8CFF]/30"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
+                    <input
+                      type="checkbox"
+                      id="edit-is-default"
+                      checked={editingFunnel.is_default}
+                      onChange={e => setEditingFunnel(p => p ? { ...p, is_default: e.target.checked } : p)}
+                      className="w-4 h-4 accent-[#5B8CFF]"
+                    />
+                    <label htmlFor="edit-is-default" className="text-sm font-medium cursor-pointer select-none">
+                      Funil padrão <span className="text-xs text-muted-foreground">(leads sem funil são atribuídos a este)</span>
+                    </label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Usuários com acesso a este funil</Label>
+                    <p className="text-[10px] text-muted-foreground">Se nenhum selecionado, todos os usuários da organização terão acesso.</p>
+                    <div className="flex flex-wrap gap-2 p-3 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-lg min-h-[48px]">
+                      {orgUsers.map(u => {
+                        const sel = editingFunnel.user_ids.includes(u.id)
+                        return (
+                          <button key={u.id}
+                            onClick={() => setEditingFunnel(p => p ? { ...p, user_ids: sel ? p.user_ids.filter(id => id !== u.id) : [...p.user_ids, u.id] } : p)}
+                            className={cn('flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-all font-medium',
+                              sel ? 'bg-[#5B8CFF] text-white border-transparent' : 'border-border text-muted-foreground hover:border-[#5B8CFF]/40')}>
+                            {sel && <Check className="w-2.5 h-2.5" />}
+                            {u.full_name ?? u.email}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                   <div className="flex gap-2 pt-1">
-                    <Button variant="destructive" className="text-sm" onClick={() => { deleteFunnel(editingFunnel.id); setEditingFunnel(null) }}>Remover</Button>
+                    {!editingFunnel.is_default && (
+                      <Button variant="destructive" className="text-sm" onClick={() => { deleteFunnel(editingFunnel.id); setEditingFunnel(null) }}>Remover</Button>
+                    )}
                     <div className="flex-1" />
                     <Button variant="outline" className="text-sm" onClick={() => setEditingFunnel(null)}>Cancelar</Button>
-                    <Button onClick={() => updateFunnel(editingFunnel)} disabled={!editingFunnel.name.trim()} className="text-white text-sm" style={{ background: '#12B981' }}>
-                      Salvar
+                    <Button onClick={() => updateFunnel(editingFunnel)} disabled={!editingFunnel.name.trim() || savingFunnel} className="text-white text-sm" style={{ background: '#12B981' }}>
+                      {savingFunnel ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar'}
                     </Button>
                   </div>
                 </div>
@@ -852,78 +877,48 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
 
           {/* ── New funnel dialog ── */}
           <Dialog open={showNewFunnel} onOpenChange={setShowNewFunnel}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader><DialogTitle>Adicionar funil</DialogTitle></DialogHeader>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>Novo funil</DialogTitle></DialogHeader>
               <div className="space-y-4 mt-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Nome</Label>
-                    <Input value={newFunnel.name} onChange={e => setNewFunnel(p => ({ ...p, name: e.target.value }))} placeholder="Digite..." className="h-9 text-sm" autoFocus onKeyDown={e => e.key === 'Enter' && createFunnel()} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Responsável pelo funil</Label>
-                    <Select value={newFunnel.responsible_id} onValueChange={v => { if (v) setNewFunnel(p => ({ ...p, responsible_id: v })) }}>
-                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecione o responsável..." /></SelectTrigger>
-                      <SelectContent>{orgUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.email ?? '—'}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Tipo de funil</Label>
-                    <Select value={newFunnel.type} onValueChange={v => { if (v) setNewFunnel(p => ({ ...p, type: v })) }}>
-                      <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                      <SelectContent>{FUNNEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Visibilidade</Label>
-                    <Select value={newFunnel.visibility} onValueChange={v => { if (v) setNewFunnel(p => ({ ...p, visibility: v as Funnel['visibility'] })) }}>
-                      <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="publico">
-                          <div><p>Público</p><p className="text-[10px] text-muted-foreground">Todos podem vê-lo</p></div>
-                        </SelectItem>
-                        <SelectItem value="privado">
-                          <div><p>Privado</p><p className="text-[10px] text-muted-foreground">Somente o responsável pelo funil pode vê-lo</p></div>
-                        </SelectItem>
-                        <SelectItem value="por_usuario">
-                          <div><p>Por usuário</p><p className="text-[10px] text-muted-foreground">Somente alguns usuários podem vê-lo</p></div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs font-semibold">Descrição</Label>
-                    <textarea
-                      value={newFunnel.description}
-                      onChange={e => setNewFunnel(p => ({ ...p, description: e.target.value }))}
-                      placeholder="Descrição..."
-                      rows={3}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#5B8CFF]/30 focus:border-[#5B8CFF]"
-                    />
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Nome *</Label>
+                  <Input value={newFunnelName} onChange={e => setNewFunnelName(e.target.value)} placeholder="Ex: Funil Principal, Pré-Vendas..." className="h-9 text-sm" autoFocus onKeyDown={e => e.key === 'Enter' && createFunnel()} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Descrição</Label>
+                  <Input value={newFunnelDesc} onChange={e => setNewFunnelDesc(e.target.value)} placeholder="Opcional..." className="h-9 text-sm" />
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
+                  <input
+                    type="checkbox"
+                    id="new-is-default"
+                    checked={newFunnelDefault}
+                    onChange={e => setNewFunnelDefault(e.target.checked)}
+                    className="w-4 h-4 accent-[#5B8CFF]"
+                  />
+                  <label htmlFor="new-is-default" className="text-sm font-medium cursor-pointer select-none">Funil padrão</label>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Usuários com acesso <span className="text-muted-foreground font-normal">(vazio = todos)</span></Label>
+                  <div className="flex flex-wrap gap-2 p-3 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-lg min-h-[44px]">
+                    {orgUsers.map(u => {
+                      const sel = newFunnelUserIds.includes(u.id)
+                      return (
+                        <button key={u.id}
+                          onClick={() => setNewFunnelUserIds(prev => sel ? prev.filter(id => id !== u.id) : [...prev, u.id])}
+                          className={cn('flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-all font-medium',
+                            sel ? 'bg-[#5B8CFF] text-white border-transparent' : 'border-border text-muted-foreground hover:border-[#5B8CFF]/40')}>
+                          {sel && <Check className="w-2.5 h-2.5" />}
+                          {u.full_name ?? u.email}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
-                {newFunnel.visibility === 'por_usuario' && (
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold">Usuários com acesso</Label>
-                    <div className="flex flex-wrap gap-2 p-3 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-lg min-h-[48px]">
-                      {orgUsers.map(u => {
-                        const sel = newFunnel.user_ids.includes(u.id)
-                        return (
-                          <button key={u.id} onClick={() => setNewFunnel(p => ({ ...p, user_ids: sel ? p.user_ids.filter(id => id !== u.id) : [...p.user_ids, u.id] }))}
-                            className={cn('flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-all font-medium',
-                              sel ? 'bg-foreground text-background border-transparent' : 'border-border text-muted-foreground hover:border-foreground/40')}>
-                            {sel && <X className="w-2.5 h-2.5" />}
-                            {u.full_name ?? u.email}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button variant="outline" className="text-sm" onClick={() => setShowNewFunnel(false)}>Cancelar</Button>
-                  <Button onClick={createFunnel} disabled={!newFunnel.name.trim()} className="text-white text-sm" style={{ background: '#12B981' }}>
-                    Salvar
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" className="flex-1 text-sm" onClick={() => setShowNewFunnel(false)}>Cancelar</Button>
+                  <Button onClick={createFunnel} disabled={!newFunnelName.trim() || savingFunnel} className="flex-1 text-white text-sm" style={{ background: '#12B981' }}>
+                    {savingFunnel ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Criar funil'}
                   </Button>
                 </div>
               </div>
@@ -990,7 +985,10 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                   <p className="text-sm font-semibold">Rotação automática de leads</p>
                   <p className="text-xs text-muted-foreground">Cada novo lead é atribuído ao próximo vendedor na fila (round-robin)</p>
                 </div>
-                <Toggle checked={rotationEnabled} onChange={v => saveRotation(v, rotationUserIds)} />
+                <div className="flex items-center gap-2">
+                  {savingRotation && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                  <Toggle checked={rotationEnabled} onChange={v => saveRotation(v, rotationUserIds)} />
+                </div>
               </div>
 
               {rotationEnabled && (
@@ -1014,6 +1012,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                               checked={isInQueue}
                               onChange={v => saveRotation(rotationEnabled, v ? [...rotationUserIds, u.id] : rotationUserIds.filter(id => id !== u.id))}
                             />
+
                           </div>
                         )
                       })}
@@ -1044,35 +1043,40 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
         <div className="max-w-lg space-y-4">
           <div>
             <h3 className="font-semibold text-sm">Segmentos de mercado</h3>
-            <p className="text-xs text-muted-foreground">Categorize seus clientes e leads por segmento de atuação (ex: Imobiliário, Saúde, Varejo).</p>
+            <p className="text-xs text-muted-foreground">Categorize clientes e leads por segmento de atuação (ex: Imobiliário, Saúde, Varejo).</p>
           </div>
 
           <Card className="border-border shadow-none">
             <CardContent className="p-4 space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Novo segmento</Label>
+                <Label className="text-xs font-semibold">Nome do segmento</Label>
                 <div className="flex gap-2">
                   <Input value={newSegmentName} onChange={e => setNewSegmentName(e.target.value)} placeholder="Ex: Imobiliário, Saúde, Advocacia..." className="h-9 text-sm flex-1" onKeyDown={e => e.key === 'Enter' && createSegment()} />
-                  <Button onClick={createSegment} disabled={!newSegmentName.trim()} className="text-white text-xs h-9" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                  <Button onClick={createSegment} disabled={!newSegmentName.trim()} className="text-white text-xs h-9 shrink-0" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
                     <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar
                   </Button>
                 </div>
               </div>
+              <ColorPicker label="Cor do segmento" value={newSegmentColor} onChange={setNewSegmentColor} />
             </CardContent>
           </Card>
 
-          {segments.length === 0 ? (
+          {loadingSegments ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Carregando...
+            </div>
+          ) : segments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm border border-dashed border-border rounded-xl">
               <Building2 className="w-7 h-7 mx-auto mb-2 opacity-30" />
               Nenhum segmento criado ainda.
             </div>
           ) : (
             <Card className="border-border shadow-none overflow-hidden">
-              {segments.map((s, i) => (
+              {segments.map(s => (
                 <div key={s.id} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
-                  <Building2 className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color }} />
                   <span className="flex-1 text-sm font-medium">{s.name}</span>
-                  <button onClick={() => saveSegments(segments.filter(seg => seg.id !== s.id))} className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors rounded">
+                  <button onClick={() => deleteSegment(s.id)} className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors rounded">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1080,14 +1084,20 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
             </Card>
           )}
 
-          {/* Preset segments */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground">Segmentos comuns para adicionar:</p>
+            <p className="text-xs font-semibold text-muted-foreground">Sugestões rápidas:</p>
             <div className="flex flex-wrap gap-1.5">
               {['Imobiliário', 'Saúde', 'Educação', 'Varejo', 'Advocacia', 'Contabilidade', 'Construtora', 'Tecnologia', 'Agronegócio', 'Indústria', 'Condomínio', 'E-commerce'].map(preset => (
                 <button
                   key={preset}
-                  onClick={() => { if (!segments.find(s => s.name === preset)) { saveSegments([...segments, { id: crypto.randomUUID(), name: preset }]); toast.success(`"${preset}" adicionado!`) } else { toast.info('Segmento já existe') } }}
+                  onClick={async () => {
+                    if (segments.find(s => s.name === preset)) { toast.info('Segmento já existe'); return }
+                    const supabase = createClient()
+                    const { data: me } = await supabase.from('users').select('organization_id').single()
+                    if (!me?.organization_id) return
+                    const { data, error } = await supabase.from('segments').insert({ organization_id: me.organization_id, name: preset, color: newSegmentColor }).select().single()
+                    if (!error && data) { setSegments(prev => [...prev, { id: data.id, name: data.name, color: data.color }]); toast.success(`"${preset}" adicionado!`) }
+                  }}
                   className="text-xs px-2.5 py-1 rounded-full border border-border hover:border-[#5B8CFF]/40 hover:bg-[#5B8CFF]/5 transition-colors"
                 >
                   + {preset}

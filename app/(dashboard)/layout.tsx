@@ -21,7 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const [{ count: notifCount }, { data: org }] = await Promise.all([
     supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false),
-    supabase.from('organizations').select('primary_color, secondary_color, button_color').eq('id', appUser.organization_id).single(),
+    supabase.from('organizations').select('primary_color, secondary_color, button_color, logo_url, name, tagline').eq('id', appUser.organization_id).single(),
   ])
 
   const brandPrimary = org?.primary_color ?? '#5B8CFF'
@@ -32,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <>
       <style dangerouslySetInnerHTML={{ __html: `:root{--brand-primary:${brandPrimary};--brand-secondary:${brandSecondary};--brand-button:${brandButton};}` }} />
       <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar />
+        <Sidebar orgLogoUrl={org?.logo_url} orgName={org?.name} orgTagline={org?.tagline} />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <Topbar
             userName={appUser?.full_name ?? undefined}
