@@ -20,11 +20,12 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import {
-  ArrowLeft, Globe, Mail, Phone, Building2, Calendar,
+  ArrowLeft, ArrowRight, Globe, Mail, Phone, Building2, Calendar,
   User, Target, MessageSquare, AlertTriangle, FileText,
   CheckSquare, Clock, ExternalLink, Plus, Trash2,
-  Layers, Send, Eye, MessageCircle, Zap,
+  Layers, Send, Eye, MessageCircle, Zap, ChevronDown,
   Star, Shield, Copy, Check, Camera, Briefcase, Users,
+  Edit3, Save, X, DollarSign, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -101,7 +102,13 @@ interface ClientProfileProps {
   approvals: Array<Pick<Approval, 'id' | 'title' | 'status' | 'due_date' | 'channel' | 'type' | 'created_at'>>
   contentItems: Array<Pick<ContentItem, 'id' | 'title' | 'status' | 'channel' | 'scheduled_date' | 'created_at'>>
   conversations: Array<Pick<Conversation, 'id' | 'channel' | 'status' | 'last_message' | 'created_at'>>
+  users: Array<{ id: string; full_name: string | null; avatar_url: string | null }>
 }
+
+const ALL_SERVICES = [
+  'Social Media', 'Tráfego Pago', 'SEO', 'Email Marketing',
+  'Branding', 'Criação de Conteúdo', 'Website', 'Consultoria',
+]
 
 /* ── Quick Log Activity Modal ─────────────────────────────────── */
 
@@ -281,39 +288,116 @@ export function ClientProfile({
   approvals,
   contentItems,
   conversations,
+  users,
 }: ClientProfileProps) {
   const [tab, setTab] = useState('overview')
-  const [client] = useState(initialClient)
+  const [client, setClient] = useState(initialClient)
   const [contacts, setContacts] = useState(initialContacts)
   const [activities, setActivities] = useState(initialActivities)
   const [logOpen, setLogOpen] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
+
+  // Inline edit state
+  const [editingMrr, setEditingMrr] = useState(false)
+  const [mrrInput, setMrrInput] = useState(String(client.mrr ?? 0))
+  const [editingContract, setEditingContract] = useState(false)
+  const [contractInput, setContractInput] = useState(client.contract_since ?? '')
+  const [editingObjectives, setEditingObjectives] = useState(false)
+  const [objectivesInput, setObjectivesInput] = useState(client.objectives ?? '')
+  const [voiceInput, setVoiceInput] = useState(client.voice_tone ?? '')
+  const [editingServices, setEditingServices] = useState(false)
+  const [servicesInput, setServicesInput] = useState<string[]>(client.services ?? [])
+  const [savingField, setSavingField] = useState(false)
+
+  // Transfer ownership
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferTo, setTransferTo] = useState<string>('')
+  const [transferring, setTransferring] = useState(false)
+
+  const supabase = createClient()
+
+  const saveField = async (patch: Partial<Client>) => {
+    setSavingField(true)
+    const { error } = await supabase.from('clients').update(patch).eq('id', client.id)
+    if (error) { toast.error(`Erro: ${error.message}`); setSavingField(false); return false }
+    setClient(prev => ({ ...prev, ...patch }))
+    setSavingField(false)
+    toast.success('Salvo!')
+    return true
+  }
+
+  const saveMrr = async () => {
+    const v = Number(mrrInput)
+    if (Number.isNaN(v) || v < 0) { toast.error('Valor inválido'); return }
+    if (await saveField({ mrr: v })) setEditingMrr(false)
+  }
+
+  const saveContract = async () => {
+    if (await saveField({ contract_since: contractInput || null })) setEditingContract(false)
+  }
+
+  const saveObjectives = async () => {
+    if (await saveField({ objectives: objectivesInput || null, voice_tone: voiceInput || null })) setEditingObjectives(false)
+  }
+
+  const toggleService = (s: string) => {
+    setServicesInput(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
+  }
+  const saveServices = async () => {
+    if (await saveField({ services: servicesInput })) setEditingServices(false)
+  }
+
+  const transferOwner = async () => {
+    if (!transferTo || transferTo === client.responsible_id) {
+      toast.error('Escolha um responsável diferente do atual')
+      return
+    }
+    setTransferring(true)
+    const newResp = users.find(u => u.id === transferTo)
+    const { error } = await supabase.from('clients').update({ responsible_id: transferTo }).eq('id', client.id)
+    if (error) { toast.error(`Erro: ${error.message}`); setTransferring(false); return }
+
+    // Log to activity history
+    const { data: me } = await supabase.from('users').select('id, full_name, avatar_url').single()
+    const { data: act } = await supabase.from('activities').insert({
+      client_id: client.id,
+      organization_id: client.organization_id,
+      user_id: me?.id,
+      type: 'transferencia',
+      title: `Transferiu para ${newResp?.full_name ?? '—'}`,
+      description: `De ${client.responsible?.full_name ?? '—'} → ${newResp?.full_name ?? '—'}`,
+    }).select('*, user:user_id(full_name, avatar_url)').single()
+    if (act) setActivities(prev => [act as typeof activities[number], ...prev])
+
+    // In-app notification for new owner
+    await supabase.from('notifications').insert({
+      organization_id: client.organization_id,
+      user_id: transferTo,
+      type: 'transferencia',
+      title: `${me?.full_name ?? 'Alguém'} transferiu um cliente para você`,
+      message: client.name,
+      link: `/crm/${client.id}`,
+    })
+
+    setClient(prev => ({
+      ...prev,
+      responsible_id: transferTo,
+      responsible: newResp ? { id: newResp.id, full_name: newResp.full_name, avatar_url: newResp.avatar_url } : null,
+    }))
+    setShowTransfer(false)
+    setTransferring(false)
+    toast.success(`Cliente transferido para ${newResp?.full_name ?? 'novo dono'}`)
+  }
 
   const deleteContact = async (id: string) => {
-    const supabase = createClient()
     await supabase.from('client_contacts').delete().eq('id', id)
     setContacts(prev => prev.filter(c => c.id !== id))
     toast.success('Contato removido')
   }
 
-  const copyPortalLink = () => {
-    const link = `${window.location.origin}/portal/${client.id}`
-    navigator.clipboard.writeText(link)
-    setCopied(true)
-    toast.success('Link copiado!')
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   const pendingApprovals = approvals.filter(a => a.status === 'pending').length
   const publishedContent = contentItems.filter(c => c.status === 'published').length
   const openConversations = conversations.filter(c => c.status === 'open').length
-
-  const kpis = [
-    { label: 'MRR', value: `R$ ${(client.mrr ?? 0).toLocaleString('pt-BR')}`, color: '#5B8CFF' },
-    { label: 'Contrato', value: formatDate(client.contract_since), color: undefined },
-    { label: 'Responsável', value: client.responsible?.full_name?.split(' ')[0] ?? '—', color: undefined },
-  ]
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -322,13 +406,13 @@ export function ClientProfile({
         <ArrowLeft className="w-3.5 h-3.5" /> Voltar para clientes
       </Link>
 
-      {/* Header card */}
-      <Card className="border-border shadow-none">
-        <CardContent className="pt-5">
-          <div className="flex items-start gap-4">
+      {/* Header card — compacto e premium */}
+      <Card className="border-border shadow-sm overflow-hidden">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4 flex-wrap">
             {/* Avatar */}
             <div
-              className="w-14 h-14 rounded-xl flex items-center justify-center text-white text-xl font-bold shrink-0"
+              className="w-14 h-14 rounded-xl flex items-center justify-center text-white text-lg font-bold shrink-0 shadow-md"
               style={{ backgroundColor: avatarBg(client.name) }}
             >
               {client.name.slice(0, 2).toUpperCase()}
@@ -336,67 +420,49 @@ export function ClientProfile({
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl font-bold">{client.name}</h1>
-                <Badge className={cn('text-xs border', STATUS_COLORS[client.status] ?? STATUS_COLORS['Inativo'])}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-black tracking-tight">{client.name}</h1>
+                <Badge className={cn('text-[10px] border font-semibold', STATUS_COLORS[client.status] ?? STATUS_COLORS['Inativo'])}>
                   {client.status}
                 </Badge>
+                {client.sector && <span className="text-[11px] text-muted-foreground">· {client.sector}</span>}
               </div>
 
-              {client.sector && <p className="text-sm text-muted-foreground mt-0.5">{client.sector}</p>}
-
-              <div className="flex flex-wrap gap-4 mt-3 text-sm">
+              {/* Contato direto */}
+              <div className="flex flex-wrap gap-3 mt-1.5 text-xs">
                 {client.website && (
-                  <a href={client.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[#5B8CFF] hover:underline">
-                    <Globe className="w-3.5 h-3.5" /> {client.website.replace(/https?:\/\//, '')}
+                  <a href={client.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#5B8CFF] hover:underline">
+                    <Globe className="w-3 h-3" /> {client.website.replace(/https?:\/\//, '')}
                   </a>
                 )}
                 {client.email && (
-                  <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
-                    <Mail className="w-3.5 h-3.5" /> {client.email}
+                  <a href={`mailto:${client.email}`} className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+                    <Mail className="w-3 h-3" /> {client.email}
                   </a>
                 )}
                 {client.phone && (
-                  <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
-                    <Phone className="w-3.5 h-3.5" /> {client.phone}
+                  <a href={`tel:${client.phone}`} className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+                    <Phone className="w-3 h-3" /> {client.phone}
                   </a>
                 )}
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs"
-                onClick={() => setLogOpen(true)}
-              >
+            <div className="flex gap-1.5 shrink-0">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" onClick={() => setLogOpen(true)}>
                 <Plus className="w-3.5 h-3.5" /> Atividade
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs"
-                onClick={copyPortalLink}
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                Portal
-              </Button>
               {client.phone && (
-                <a
-                  href={`https://wa.me/${client.phone.replace(/\D/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white gap-1.5 text-xs">
+                <a href={`https://wa.me/${client.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white gap-1.5 text-xs h-8">
                     <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
                   </Button>
                 </a>
               )}
               {client.email && (
                 <a href={`mailto:${client.email}`}>
-                  <Button size="sm" className="bg-[#5B8CFF] hover:bg-[#4a7aee] text-white gap-1.5 text-xs">
+                  <Button size="sm" className="text-white gap-1.5 text-xs h-8" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
                     <Send className="w-3.5 h-3.5" /> E-mail
                   </Button>
                 </a>
@@ -404,24 +470,90 @@ export function ClientProfile({
             </div>
           </div>
 
-          {/* KPI bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mt-5 pt-4 border-t border-border">
-            {kpis.map(k => (
-              <div key={k.label}>
-                <p className="text-[11px] text-muted-foreground">{k.label}</p>
-                <p className="font-bold text-sm mt-0.5" style={k.color ? { color: k.color } : undefined}>{k.value}</p>
+          {/* KPI bar — MRR editável, Data contrato, Responsável transferível */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-4 border-t border-border">
+            {/* MRR editável */}
+            <div className="group">
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="w-3 h-3 text-[#12B981]" />
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">MRR</p>
               </div>
-            ))}
-          </div>
-
-          {/* Services */}
-          {client.services && client.services.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-4">
-              {client.services.map(s => (
-                <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
-              ))}
+              {editingMrr ? (
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="text-xs">R$</span>
+                  <Input
+                    type="number"
+                    value={mrrInput}
+                    onChange={e => setMrrInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveMrr(); if (e.key === 'Escape') { setMrrInput(String(client.mrr ?? 0)); setEditingMrr(false) } }}
+                    className="h-7 text-sm flex-1"
+                    autoFocus
+                  />
+                  <button onClick={saveMrr} disabled={savingField} className="p-1 rounded hover:bg-[#12B981]/10 text-[#12B981]"><Check className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => { setMrrInput(String(client.mrr ?? 0)); setEditingMrr(false) }} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              ) : (
+                <button onClick={() => setEditingMrr(true)} className="flex items-center gap-1.5 mt-0.5 group/btn">
+                  <p className="text-base font-black tabular-nums" style={{ color: '#12B981' }}>R$ {(client.mrr ?? 0).toLocaleString('pt-BR')}</p>
+                  <Edit3 className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                </button>
+              )}
             </div>
-          )}
+
+            {/* Data do contrato editável */}
+            <div>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3 h-3 text-[#5B8CFF]" />
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Data do contrato</p>
+              </div>
+              {editingContract ? (
+                <div className="flex items-center gap-1 mt-1">
+                  <Input
+                    type="date"
+                    value={contractInput?.slice(0, 10) ?? ''}
+                    onChange={e => setContractInput(e.target.value)}
+                    className="h-7 text-xs flex-1"
+                    autoFocus
+                  />
+                  <button onClick={saveContract} disabled={savingField} className="p-1 rounded hover:bg-[#5B8CFF]/10 text-[#5B8CFF]"><Check className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => { setContractInput(client.contract_since ?? ''); setEditingContract(false) }} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              ) : (
+                <button onClick={() => setEditingContract(true)} className="flex items-center gap-1.5 mt-0.5 group/btn">
+                  <p className="text-base font-black">{formatDate(client.contract_since)}</p>
+                  <Edit3 className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                </button>
+              )}
+            </div>
+
+            {/* Responsável + Transferir */}
+            <div>
+              <div className="flex items-center gap-1.5">
+                <User className="w-3 h-3 text-[#8B5CF6]" />
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Responsável</p>
+              </div>
+              <button
+                onClick={() => { setTransferTo(client.responsible_id ?? ''); setShowTransfer(true) }}
+                className="flex items-center gap-2 mt-1 group/btn w-full"
+                title="Clique para transferir o cliente"
+              >
+                {client.responsible ? (
+                  <>
+                    <Avatar className="h-6 w-6 ring-2 ring-transparent group-hover/btn:ring-[#5B8CFF]/40 transition-all">
+                      <AvatarImage src={client.responsible.avatar_url ?? undefined} />
+                      <AvatarFallback className="text-[10px] bg-[#5B8CFF] text-white">
+                        {(client.responsible.full_name ?? 'U').charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-bold truncate">{client.responsible.full_name}</span>
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover/btn:opacity-100 ml-auto transition-opacity" />
+                  </>
+                ) : (
+                  <span className="text-sm text-[#5B8CFF] underline-offset-2 hover:underline">+ Atribuir responsável</span>
+                )}
+              </button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -435,147 +567,225 @@ export function ClientProfile({
           <TabsTrigger value="activities" className="text-xs">
             Histórico {activities.length > 0 && <span className="ml-1 text-[10px] bg-muted px-1.5 rounded-full">{activities.length}</span>}
           </TabsTrigger>
-          <TabsTrigger value="portal" className="text-xs">Portal</TabsTrigger>
         </TabsList>
 
         {/* ── Tab: Overview ─────────────────────────────────── */}
         <TabsContent value="overview" className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-            {/* Objectives + Voice tone */}
-            <Card className="border-border shadow-none">
-              <CardHeader className="pb-2">
+            {/* ── Coluna 1: Objetivos e Briefing (editável) ── */}
+            <Card className="border-border shadow-sm lg:col-span-2">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Star className="w-4 h-4 text-[#F59E0B]" /> Objetivos e Briefing
+                  <Target className="w-4 h-4 text-[#F59E0B]" /> Objetivos e Briefing
                 </CardTitle>
+                {!editingObjectives ? (
+                  <button onClick={() => { setObjectivesInput(client.objectives ?? ''); setVoiceInput(client.voice_tone ?? ''); setEditingObjectives(true) }} className="text-[#5B8CFF] hover:bg-[#5B8CFF]/10 p-1 rounded transition-colors">
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <div className="flex gap-1">
+                    <button onClick={saveObjectives} disabled={savingField} className="p-1 rounded text-[#12B981] hover:bg-[#12B981]/10">
+                      {savingField ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => setEditingObjectives(false)} className="p-1 rounded text-muted-foreground hover:bg-muted">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                {client.objectives && (
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider mb-1 flex items-center gap-1.5">
-                      <Target className="w-3 h-3" /> Objetivo
-                    </p>
-                    <p className="text-foreground leading-relaxed">{client.objectives}</p>
+                {editingObjectives ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Objetivo principal</Label>
+                      <Textarea value={objectivesInput} onChange={e => setObjectivesInput(e.target.value)} placeholder="Qual o objetivo principal deste cliente?" className="text-sm min-h-[80px] resize-none" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Tom de voz / Briefing</Label>
+                      <Textarea value={voiceInput} onChange={e => setVoiceInput(e.target.value)} placeholder="Como falar com este cliente? Notas de briefing..." className="text-sm min-h-[60px] resize-none" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {client.objectives ? (
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1 flex items-center gap-1.5">
+                          <Target className="w-3 h-3" /> Objetivo principal
+                        </p>
+                        <p className="text-foreground leading-relaxed">{client.objectives}</p>
+                      </div>
+                    ) : null}
+                    {client.voice_tone ? (
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1 flex items-center gap-1.5">
+                          <MessageSquare className="w-3 h-3" /> Tom de voz / Briefing
+                        </p>
+                        <p className="text-foreground">{client.voice_tone}</p>
+                      </div>
+                    ) : null}
+                    {!client.objectives && !client.voice_tone && (
+                      <button onClick={() => setEditingObjectives(true)} className="w-full text-left p-4 border border-dashed border-border rounded-lg text-muted-foreground text-xs hover:bg-muted/40 hover:border-[#5B8CFF]/40 hover:text-foreground transition-colors">
+                        + Clique para adicionar objetivos e briefing
+                      </button>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Coluna 2: Atividade Recente (últimas 3) ── */}
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-[#F59E0B]" /> Atividade recente
+                </CardTitle>
+                {activities.length > 0 && (
+                  <button onClick={() => setTab('activities')} className="text-[11px] text-[#5B8CFF] hover:underline font-medium">
+                    Ver tudo ({activities.length})
+                  </button>
+                )}
+              </CardHeader>
+              <CardContent className="pt-1">
+                {activities.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Zap className="w-7 h-7 mx-auto text-muted-foreground/30 mb-2" />
+                    <p className="text-xs text-muted-foreground">Sem atividades ainda.</p>
+                    <button onClick={() => setLogOpen(true)} className="text-[11px] text-[#5B8CFF] hover:underline mt-2">
+                      + Registrar primeira
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activities.slice(0, 3).map(a => (
+                      <div key={a.id} className="flex items-start gap-2.5 group">
+                        <div className="w-7 h-7 rounded-lg bg-[#5B8CFF]/10 flex items-center justify-center text-[#5B8CFF] shrink-0 mt-0.5">
+                          {ACTIVITY_ICONS[a.type ?? 'note'] ?? <FileText className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold leading-tight truncate">{a.title ?? a.type}</p>
+                          {a.description && <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{a.description}</p>}
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-muted-foreground">{timeAgo(a.created_at)}</span>
+                            {a.user && <span className="text-[10px] text-muted-foreground">· {a.user.full_name?.split(' ')[0]}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
-                {client.voice_tone && (
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider mb-1 flex items-center gap-1.5">
-                      <MessageSquare className="w-3 h-3" /> Tom de Voz
-                    </p>
-                    <p className="text-foreground">{client.voice_tone}</p>
-                  </div>
-                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Empresa (full width) ── */}
+            <Card className="border-border shadow-sm lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-[#5B8CFF]" /> Informações da empresa
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  {[
+                    { icon: Building2, label: 'CNPJ', value: client.cnpj, mono: true },
+                    { icon: Globe, label: 'Website', value: client.website },
+                    { icon: Mail, label: 'E-mail', value: client.email },
+                    { icon: Phone, label: 'Telefone', value: client.phone },
+                    { icon: Building2, label: 'Cidade', value: client.city ? `${client.city}${client.state ? ` — ${client.state}` : ''}` : null },
+                    { icon: Calendar, label: 'Início do contrato', value: formatDate(client.contract_since) },
+                    { icon: Calendar, label: 'Término do contrato', value: formatDate(client.contract_end) },
+                    { icon: Briefcase, label: 'Setor', value: client.sector },
+                  ].map(f => {
+                    const Icon = f.icon
+                    const hasValue = f.value && f.value !== '—'
+                    return (
+                      <div key={f.label} className="flex items-start gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{f.label}</p>
+                          <p className={cn('font-medium text-sm truncate mt-0.5', !hasValue && 'text-muted-foreground/40 italic font-normal', f.mono && 'font-mono text-xs')}>
+                            {hasValue ? f.value : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
                 {client.observations && (
                   <div className={cn(
-                    'p-2.5 rounded-lg text-xs leading-relaxed',
-                    client.observations.toLowerCase().includes('alerta') || client.observations.toLowerCase().includes('urgente')
-                      ? 'bg-red-500/10 text-red-600 border border-red-500/20'
+                    'mt-4 p-3 rounded-lg text-xs leading-relaxed',
+                    client.observations.toLowerCase().match(/alerta|urgente/)
+                      ? 'bg-red-500/8 text-red-600 border border-red-500/20'
                       : 'bg-muted text-muted-foreground'
                   )}>
-                    {(client.observations.toLowerCase().includes('alerta') || client.observations.toLowerCase().includes('urgente')) && (
+                    {client.observations.toLowerCase().match(/alerta|urgente/) && (
                       <AlertTriangle className="w-3 h-3 inline mr-1" />
                     )}
                     {client.observations}
                   </div>
                 )}
-                {!client.objectives && !client.voice_tone && !client.observations && (
-                  <p className="text-muted-foreground text-xs">Nenhuma informação adicionada.</p>
+              </CardContent>
+            </Card>
+
+            {/* ── Serviços contratados (editáveis) ── */}
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#8B5CF6]" /> Serviços contratados
+                </CardTitle>
+                {!editingServices ? (
+                  <button onClick={() => { setServicesInput(client.services ?? []); setEditingServices(true) }} className="text-[#5B8CFF] hover:bg-[#5B8CFF]/10 p-1 rounded transition-colors">
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <div className="flex gap-1">
+                    <button onClick={saveServices} disabled={savingField} className="p-1 rounded text-[#12B981] hover:bg-[#12B981]/10">
+                      {savingField ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => setEditingServices(false)} className="p-1 rounded text-muted-foreground hover:bg-muted">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className="pt-1">
+                {editingServices ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {ALL_SERVICES.map(s => {
+                      const selected = servicesInput.includes(s)
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => toggleService(s)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors',
+                            selected
+                              ? 'bg-[#8B5CF6]/10 border-[#8B5CF6] text-[#8B5CF6]'
+                              : 'border-border text-muted-foreground hover:border-muted-foreground/40'
+                          )}
+                        >
+                          {selected && <Check className="w-2.5 h-2.5 inline mr-0.5" />}
+                          {s}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : client.services && client.services.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {client.services.map(s => (
+                      <Badge key={s} className="text-[11px] bg-[#8B5CF6]/10 text-[#8B5CF6] border-0 font-semibold">{s}</Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <button onClick={() => setEditingServices(true)} className="w-full text-left p-3 border border-dashed border-border rounded-lg text-muted-foreground text-xs hover:bg-muted/40 hover:border-[#5B8CFF]/40 hover:text-foreground transition-colors">
+                    + Clique para adicionar serviços
+                  </button>
                 )}
               </CardContent>
             </Card>
-
-            {/* Company info */}
-            <Card className="border-border shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-muted-foreground" /> Informações da empresa
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2.5 text-sm">
-                {[
-                  { icon: Building2, label: 'CNPJ', value: client.cnpj },
-                  { icon: Globe, label: 'Website', value: client.website },
-                  { icon: Mail, label: 'E-mail', value: client.email },
-                  { icon: Phone, label: 'Telefone', value: client.phone },
-                  { icon: Building2, label: 'Cidade', value: client.city ? `${client.city}${client.state ? ` — ${client.state}` : ''}` : null },
-                  { icon: Calendar, label: 'Início do contrato', value: formatDate(client.contract_since) },
-                  { icon: Calendar, label: 'Término do contrato', value: formatDate(client.contract_end) },
-                ].filter(f => f.value && f.value !== '—').map(f => {
-                  const Icon = f.icon
-                  return (
-                    <div key={f.label} className="flex items-center gap-2.5">
-                      <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-muted-foreground w-32 shrink-0 text-xs">{f.label}</span>
-                      <span className="font-medium truncate text-sm">{f.value}</span>
-                    </div>
-                  )
-                })}
-              </CardContent>
-            </Card>
-
-            {/* Responsible + Recent activity */}
-            <div className="space-y-4">
-              {client.responsible && (
-                <Card className="border-border shadow-none">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <User className="w-4 h-4 text-muted-foreground" /> Responsável
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={client.responsible.avatar_url ?? undefined} />
-                        <AvatarFallback className="bg-[#5B8CFF] text-white text-sm">
-                          {(client.responsible.full_name ?? 'U').charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-semibold text-sm">{client.responsible.full_name}</p>
-                        <p className="text-xs text-muted-foreground">Gestor de conta</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Activity snapshot */}
-              <Card className="border-border shadow-none">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-[#F59E0B]" /> Atividade Recente
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {activities.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2">Nenhuma atividade registrada.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {activities.slice(0, 3).map(a => (
-                        <div key={a.id} className="flex items-start gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-0.5">
-                            {ACTIVITY_ICONS[a.type ?? 'note'] ?? <FileText className="w-3 h-3" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{a.title ?? a.type}</p>
-                            <p className="text-[10px] text-muted-foreground">{timeAgo(a.created_at)}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {activities.length > 3 && (
-                        <button
-                          onClick={() => setTab('activities')}
-                          className="text-[11px] text-[#5B8CFF] hover:underline"
-                        >
-                          Ver mais {activities.length - 3} atividades →
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </TabsContent>
 
@@ -735,125 +945,6 @@ export function ClientProfile({
           </Card>
         </TabsContent>
 
-        {/* ── Tab: Portal ───────────────────────────────────── */}
-        <TabsContent value="portal" className="mt-4 space-y-4">
-          {/* Portal status */}
-          <Card className="border-border shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <ExternalLink className="w-4 h-4 text-[#5B8CFF]" /> Portal do Cliente
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div>
-                  <p className="text-sm font-semibold">Status do portal</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {client.portal_enabled
-                      ? 'Portal ativo — o cliente pode acessar aprovações e conteúdos'
-                      : 'Portal desativado — clique para ativar'}
-                  </p>
-                </div>
-                <Badge
-                  className={cn(
-                    'text-xs border',
-                    client.portal_enabled
-                      ? 'bg-[#12B981]/10 text-[#12B981] border-[#12B981]/20'
-                      : 'bg-muted text-muted-foreground border-border'
-                  )}
-                >
-                  {client.portal_enabled ? '● Ativo' : '○ Inativo'}
-                </Badge>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold">Link do portal</Label>
-                <div className="flex gap-2">
-                  <Input
-                    readOnly
-                    value={`/portal/${client.id}`}
-                    className="h-9 text-sm font-mono bg-muted"
-                  />
-                  <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs shrink-0" onClick={copyPortalLink}>
-                    {copied ? <Check className="w-3.5 h-3.5 text-[#12B981]" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copied ? 'Copiado' : 'Copiar'}
-                  </Button>
-                  <a href={`/portal/${client.id}`} target="_blank" rel="noopener noreferrer">
-                    <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs">
-                      <Eye className="w-3.5 h-3.5" /> Abrir
-                    </Button>
-                  </a>
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Atividades', value: activities.length, icon: Clock, color: '#5B8CFF' },
-                  { label: 'Conversas', value: conversations.length, icon: MessageCircle, color: '#12B981' },
-                ].map(s => {
-                  const Icon = s.icon
-                  return (
-                    <div key={s.label} className="text-center p-3 rounded-lg border border-border">
-                      <Icon className="w-5 h-5 mx-auto mb-1.5" style={{ color: s.color }} />
-                      <p className="text-xl font-bold">{s.value}</p>
-                      <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Conversations */}
-          {conversations.length > 0 && (
-            <Card className="border-border shadow-none">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <MessageCircle className="w-4 h-4 text-[#5B8CFF]" /> Conversas recentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {conversations.map((conv, i) => (
-                  <motion.div
-                    key={conv.id}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                      {CHANNEL_ICONS[conv.channel] ?? <MessageSquare className="w-4 h-4 text-muted-foreground" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium capitalize">{conv.channel}</span>
-                        <Badge
-                          className={cn(
-                            'text-[10px] border-0',
-                            conv.status === 'open'
-                              ? 'bg-[#12B981]/10 text-[#12B981]'
-                              : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {conv.status === 'open' ? 'Aberto' : 'Fechado'}
-                        </Badge>
-                      </div>
-                      {conv.last_message && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{conv.last_message}</p>
-                      )}
-                    </div>
-                    <Link href={`/atendimento?conversation=${conv.id}`}>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
-                  </motion.div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
       </Tabs>
 
       {/* Modals */}
@@ -869,6 +960,66 @@ export function ClientProfile({
         onClose={() => setAddContactOpen(false)}
         onSaved={c => setContacts(prev => [c, ...prev])}
       />
+
+      {/* Transfer ownership dialog */}
+      <Dialog open={showTransfer} onOpenChange={setShowTransfer}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="w-4 h-4 text-[#0EA5E9]" /> Transferir cliente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-1">
+            <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl">
+              <span className="text-xs font-semibold text-muted-foreground">DE</span>
+              {client.responsible ? (
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={client.responsible.avatar_url ?? undefined} />
+                    <AvatarFallback className="text-[10px] text-white" style={{ background: '#5B8CFF' }}>
+                      {(client.responsible.full_name ?? 'U').charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium">{client.responsible.full_name}</span>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground italic">Sem responsável</span>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Novo responsável</Label>
+              <Select value={transferTo} onValueChange={v => v && setTransferTo(v)}>
+                <SelectTrigger className="h-10 text-sm">
+                  <span className={transferTo ? 'text-foreground' : 'text-muted-foreground'}>
+                    {users.find(u => u.id === transferTo)?.full_name ?? 'Selecione o novo dono...'}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto shrink-0 text-muted-foreground" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.filter(u => u.id !== client.responsible_id).map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                A transferência será registrada no histórico e o novo responsável receberá uma notificação.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 text-sm" onClick={() => setShowTransfer(false)}>Cancelar</Button>
+              <Button
+                className="flex-1 text-white text-sm gap-1.5"
+                style={{ background: '#0EA5E9' }}
+                onClick={transferOwner}
+                disabled={transferring || !transferTo || transferTo === client.responsible_id}
+              >
+                {transferring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                Transferir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
