@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server'
+import { sendMail } from '@/lib/email/sendMail'
 
-/**
- * Stub — envia e-mail via SMTP configurado em Integrações.
- * TODO: implementar backend real com nodemailer + tabela email_settings.
- * Por enquanto retorna 501 explicando que precisa configurar.
- */
-export async function POST() {
-  return NextResponse.json(
-    {
-      error:
-        'Envio de e-mail ainda não está conectado ao backend SMTP. ' +
-        'O conteúdo é salvo no histórico do lead, mas o e-mail real precisa do nodemailer configurado. ' +
-        'Configure suas credenciais em Integrações → Email e aguarde a próxima atualização.',
-    },
-    { status: 501 },
-  )
+export async function POST(req: Request) {
+  try {
+    const { to, subject, body, cc, bcc } = await req.json()
+    if (!to || !subject || !body) {
+      return NextResponse.json({ error: 'to, subject e body são obrigatórios' }, { status: 400 })
+    }
+    await sendMail({ to, subject, body, cc, bcc })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erro desconhecido'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

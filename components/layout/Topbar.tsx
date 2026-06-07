@@ -2,10 +2,11 @@
 
 import { usePathname } from 'next/navigation'
 import {
-  Bell, Search, Moon, Sun, ChevronDown,
+  Search, Moon, Sun, ChevronDown,
   LayoutDashboard, Users, Kanban, Bot, Settings,
   Palette, LogOut, Zap, DollarSign, User,
 } from 'lucide-react'
+import { NotificationBell } from './NotificationBell'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -83,14 +84,7 @@ export function Topbar({ userName, userEmail, userAvatar, notificationCount = 0 
       </Button>
 
       {/* Notifications */}
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative" onClick={() => router.push('/configuracoes')}>
-        <Bell className="w-4 h-4" />
-        {notificationCount > 0 && (
-          <Badge className="absolute -top-0.5 -right-0.5 h-4 w-4 p-0 flex items-center justify-center text-[9px] bg-[#e1493c] border-0">
-            {notificationCount > 9 ? '9+' : notificationCount}
-          </Badge>
-        )}
-      </Button>
+      <NotificationBell />
 
       {/* User menu */}
       <DropdownMenu>

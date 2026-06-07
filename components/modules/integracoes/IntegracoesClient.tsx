@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Key, BarChart3, Mail, Globe,
   Copy, Check, Eye, EyeOff, ExternalLink,
-  Bot, Zap, ChevronRight, Code2, Info, CheckCircle2, AlertCircle,
+  Bot, Zap, ChevronRight, Code2, Info, CheckCircle2, AlertCircle, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -517,34 +518,153 @@ document.addEventListener('wpcf7mailsent', function(event) {
             </CardContent>
           </Card>
 
-          <Card className="border-border shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Configuração SMTP</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Servidor SMTP</Label>
-                  <Input placeholder="smtp.gmail.com" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Porta</Label>
-                  <Input placeholder="587" className="h-9 text-sm" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Email</Label>
-                <Input placeholder="seu@email.com" type="email" className="h-9 text-sm" />
-              </div>
-              <SecretField label="Senha ou App Password" value="" placeholder="Senha de aplicativo" />
-              <Button className="w-full bg-[#5B8CFF] hover:bg-[#4a7aee] text-white text-sm"
-                onClick={() => toast.success('Configuração SMTP salva!')}>
-                Salvar e testar conexão
-              </Button>
-            </CardContent>
-          </Card>
+          <SmtpConfigCard />
         </div>
       )}
     </div>
   )
 }
+
+function SmtpConfigCard() {
+  const [host, setHost] = useState('')
+  const [port, setPort] = useState('587')
+  const [emailUser, setEmailUser] = useState('')
+  const [emailPass, setEmailPass] = useState('')
+  const [fromName, setFromName] = useState('')
+  const [showPass, setShowPass] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [hasConfig, setHasConfig] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('email_settings').select('*').maybeSingle().then(({ data }) => {
+      if (data) {
+        setHost(data.smtp_host ?? '')
+        setPort(String(data.smtp_port ?? 587))
+        setEmailUser(data.smtp_user ?? '')
+        setEmailPass(data.smtp_pass ?? '')
+        setFromName(data.from_name ?? '')
+        setHasConfig(true)
+      }
+      setLoaded(true)
+    })
+  }, [])
+
+  const save = async () => {
+    if (!host || !port || !emailUser || !emailPass) { toast.error('Preencha todos os campos'); return }
+    setSaving(true)
+    const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    if (!me?.organization_id) { toast.error('Org não encontrada'); setSaving(false); return }
+    const { error } = await supabase.from('email_settings').upsert({
+      organization_id: me.organization_id,
+      smtp_host: host,
+      smtp_port: Number(port),
+      smtp_user: emailUser,
+      smtp_pass: emailPass,
+      from_name: fromName || null,
+    }, { onConflict: 'organization_id' })
+    if (error) { toast.error(`Erro: ${error.message}`); setSaving(false); return }
+    toast.success('Configuração salva!')
+    setHasConfig(true)
+    setSaving(false)
+  }
+
+  const testConnection = async () => {
+    setTesting(true)
+    const res = await fetch('/api/email/test', { method: 'POST' })
+    const body = await res.json().catch(() => ({}))
+    if (res.ok) toast.success('Conexão OK! Servidor SMTP respondeu.')
+    else toast.error(`Falhou: ${body.error ?? 'verifique credenciais'}`)
+    setTesting(false)
+  }
+
+  if (!loaded) {
+    return (
+      <Card className="border-border shadow-none">
+        <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" /> Carregando...
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="border-border shadow-none">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center justify-between">
+          Configuração SMTP
+          {hasConfig && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#12B981]/15 text-[#12B981]">
+              <CheckCircle2 className="w-3 h-3 inline mr-1" /> Configurado
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Servidor SMTP</Label>
+            <Input value={host} onChange={e => setHost(e.target.value)} placeholder="smtp.gmail.com" className="h-9 text-sm" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Porta</Label>
+            <Input value={port} onChange={e => setPort(e.target.value)} placeholder="587" className="h-9 text-sm" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold">Nome do remetente (opcional)</Label>
+          <Input value={fromName} onChange={e => setFromName(e.target.value)} placeholder="Acredyta" className="h-9 text-sm" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold">Email (usuário SMTP)</Label>
+          <Input value={emailUser} onChange={e => setEmailUser(e.target.value)} placeholder="seu@email.com" type="email" className="h-9 text-sm" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold">Senha / App Password</Label>
+          <div className="relative">
+            <Input
+              value={emailPass}
+              onChange={e => setEmailPass(e.target.value)}
+              type={showPass ? 'text' : 'password'}
+              placeholder="App password (Gmail) ou senha SMTP"
+              className="h-9 text-sm pr-9 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPass(!showPass)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Gmail: gere um <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-[#5B8CFF] underline">App Password</a> em vez da senha real.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1 text-sm"
+            onClick={testConnection}
+            disabled={testing || !hasConfig}
+          >
+            {testing && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
+            Testar conexão
+          </Button>
+          <Button
+            className="flex-1 bg-[#5B8CFF] hover:bg-[#4a7aee] text-white text-sm"
+            onClick={save}
+            disabled={saving}
+          >
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
+            Salvar configuração
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+

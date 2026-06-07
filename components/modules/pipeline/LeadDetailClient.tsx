@@ -350,6 +350,32 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
       `Transferiu para ${newResp?.full_name ?? '—'}`,
       oldResp ? `De ${oldResp.full_name ?? '—'} → ${newResp?.full_name ?? '—'}` : `Atribuído a ${newResp?.full_name ?? '—'}`,
     )
+
+    // Create in-app notification for the new owner
+    const me = await getMe()
+    const fromName = me?.full_name ?? 'Alguém'
+    await supabase.from('notifications').insert({
+      organization_id: lead.organization_id,
+      user_id: transferTo,
+      type: 'transferencia',
+      title: `${fromName} transferiu um lead para você`,
+      message: `${lead.name}${lead.company ? ` — ${lead.company}` : ''}`,
+      link: `/pipeline/${lead.id}`,
+    })
+
+    // Send email notification (fire-and-forget, won't fail UI if SMTP not configured)
+    fetch('/api/notifications/send-transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toUserId: transferTo,
+        leadId: lead.id,
+        leadName: lead.name,
+        leadCompany: lead.company,
+        fromName,
+      }),
+    }).catch(() => { /* silent — in-app notification already created */ })
+
     setLead(prev => ({
       ...prev,
       responsible_id: transferTo,

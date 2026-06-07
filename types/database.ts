@@ -175,6 +175,15 @@ export interface Database {
         status: string
         sent_at: string
       }>
+      email_settings: TableDef<{
+        organization_id: string
+        smtp_host: string
+        smtp_port: number
+        smtp_user: string
+        smtp_pass: string
+        from_name: string | null
+        updated_at: string
+      }>
       lead_tasks: TableDef<{
         id: string
         lead_id: string
