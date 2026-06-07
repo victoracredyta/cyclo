@@ -766,7 +766,7 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
                     <ChevronDown className="w-3 h-3 ml-auto shrink-0 text-muted-foreground" />
                   </SelectTrigger>
                   <SelectContent>
-                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
+                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name?.trim() || 'Sem nome'}</SelectItem>)}
                   </SelectContent>
                 </Select>
               ) : (
@@ -1305,7 +1305,7 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
                 </SelectTrigger>
                 <SelectContent>
                   {users.filter(u => u.id !== lead.responsible_id).map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
+                    <SelectItem key={u.id} value={u.id}>{u.full_name?.trim() || 'Sem nome'}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

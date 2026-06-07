@@ -34,12 +34,23 @@ export default async function PipelinePage() {
     .filter(f => !(f as { is_hidden?: boolean }).is_hidden)
     .filter(f => visibleFunnelIds.has(f.id) || !funnelsWithUsers.has(f.id))
 
+  // Map funnel -> assigned user ids (so PipelineBoard can show team per funnel)
+  const visibleFunnelIdSet = new Set(funnels.map(f => f.id))
+  const funnelMembers = (funnel_users ?? [])
+    .filter(fu => visibleFunnelIdSet.has(fu.funnel_id))
+    .reduce<Record<string, string[]>>((acc, fu) => {
+      if (!acc[fu.funnel_id]) acc[fu.funnel_id] = []
+      acc[fu.funnel_id].push(fu.user_id)
+      return acc
+    }, {})
+
   return (
     <PipelineBoard
       initialStages={stages ?? []}
       initialLeads={leads ?? []}
       users={users ?? []}
       initialFunnels={funnels}
+      funnelMembers={funnelMembers}
     />
   )
 }

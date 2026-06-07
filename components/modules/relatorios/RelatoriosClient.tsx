@@ -18,6 +18,7 @@ import {
   FileSpreadsheet, Globe, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getUserName } from '@/lib/userDisplay'
 
 type ClientRow = {
   id: string; name: string; mrr: number; status: string;
@@ -553,10 +554,14 @@ window.addEventListener('load', () => {
             </SelectContent>
           </Select>
           <Select value={responsibleFilter} onValueChange={v => setResponsibleFilter(v ?? 'all')}>
-            <SelectTrigger className="w-[180px] h-9 text-sm bg-card"><SelectValue placeholder="Responsável" /></SelectTrigger>
+            <SelectTrigger className="w-[180px] h-9 text-sm bg-card">
+              <span className="truncate">
+                {responsibleFilter === 'all' ? 'Todos os responsáveis' : getUserName(responsibleFilter, users, 'Sem nome')}
+              </span>
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os responsáveis</SelectItem>
-              {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
+              {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name?.trim() || 'Sem nome'}</SelectItem>)}
             </SelectContent>
           </Select>
           {funnels.length > 1 && (

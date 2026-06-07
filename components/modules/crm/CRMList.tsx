@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { NewClientModal } from './NewClientModal'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { getUserName } from '@/lib/userDisplay'
 
 const STATUS_COLORS: Record<string, string> = {
   'Ativo': 'bg-[#12B981]/10 text-[#12B981] border-[#12B981]/30',
@@ -273,13 +274,15 @@ export function CRMList({ clients: initialClients, users, segments, contacts }: 
           </Select>
         )}
         <Select value={responsibleFilter} onValueChange={v => setResponsibleFilter(v ?? 'all')}>
-          <SelectTrigger className="w-[170px] h-9 text-sm">
-            <SelectValue placeholder="Responsável" />
+          <SelectTrigger className="w-[180px] h-9 text-sm">
+            <span className="truncate">
+              {responsibleFilter === 'all' ? 'Todos os responsáveis' : getUserName(responsibleFilter, users, 'Sem nome')}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os responsáveis</SelectItem>
             {users.map(u => (
-              <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
+              <SelectItem key={u.id} value={u.id}>{u.full_name?.trim() || 'Sem nome'}</SelectItem>
             ))}
           </SelectContent>
         </Select>

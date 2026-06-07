@@ -1062,7 +1062,7 @@ export function ClientProfile({
                 </SelectTrigger>
                 <SelectContent>
                   {users.filter(u => u.id !== client.responsible_id).map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>
+                    <SelectItem key={u.id} value={u.id}>{u.full_name?.trim() || 'Sem nome'}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
