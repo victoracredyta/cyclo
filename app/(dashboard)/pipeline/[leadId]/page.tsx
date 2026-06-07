@@ -29,23 +29,27 @@ export default async function LeadDetailPage({
       .from('activities')
       .select('*, user:user_id(id, full_name, avatar_url)')
       .eq('lead_id', leadId)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .limit(100),
     supabase
       .from('lead_tasks')
       .select('*, user:user_id(id, full_name, avatar_url)')
       .eq('lead_id', leadId)
-      .order('created_at'),
+      .order('created_at')
+      .limit(50),
     supabase.from('users').select('id, full_name, avatar_url').eq('is_active', true),
     supabase
       .from('lead_files')
       .select('*, uploader:uploaded_by(id, full_name, avatar_url)')
       .eq('lead_id', leadId)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .limit(50),
     supabase
       .from('lead_emails')
       .select('*, sender:sent_by(id, full_name, avatar_url)')
       .eq('lead_id', leadId)
-      .order('sent_at', { ascending: false }),
+      .order('sent_at', { ascending: false })
+      .limit(50),
   ])
 
   if (!lead) notFound()

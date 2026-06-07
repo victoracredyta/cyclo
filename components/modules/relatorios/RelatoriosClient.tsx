@@ -5,251 +5,354 @@ import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Funnel as FunnelChart, FunnelChart as RechartsFunnelChart, LabelList,
 } from 'recharts'
 import {
-  TrendingUp, Users, CheckSquare, FileText, Download,
-  Zap, DollarSign, Activity,
+  TrendingUp, Users, FileText, Download, Sparkles, Target,
+  DollarSign, Activity, Filter, BarChart3 as BarChartIcon,
+  ArrowUpRight, ArrowDownRight, Trophy, UserPlus, Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type ClientRow = { id: string; name: string; mrr: number; status: string; created_at: string }
-type LeadRow = { id: string; value: number | null; stage_id: string | null; won_at: string | null; lost_at: string | null; created_at: string }
-type ContentRow = { id: string; status: string; channel: string | null; created_at: string }
-type ApprovalRow = { id: string; status: string; created_at: string }
-type AutomationRow = { id: string; runs_count: number; errors_count: number; status: string }
+type ClientRow = {
+  id: string; name: string; mrr: number; status: string;
+  responsible_id: string | null; created_at: string
+}
+type LeadRow = {
+  id: string; name: string; value: number | null; stage_id: string | null;
+  funnel_id: string | null; responsible_id: string | null; origin: string | null;
+  won_at: string | null; lost_at: string | null; lost_reason: string | null; created_at: string
+}
+type StageRow = { id: string; name: string; color: string; order_index: number; funnel_id: string | null }
+type GoalRow = {
+  id: string; label: string; target_value: number; current_value: number;
+  unit: string | null; period: string; color: string
+}
+type UserRow = { id: string; full_name: string | null; avatar_url: string | null }
+type FunnelRow = { id: string; name: string; is_default: boolean }
 
 interface Props {
   clients: ClientRow[]
   leads: LeadRow[]
-  contentItems: ContentRow[]
-  approvals: ApprovalRow[]
-  automations: AutomationRow[]
+  stages: StageRow[]
+  goals: GoalRow[]
+  users: UserRow[]
+  funnels: FunnelRow[]
 }
 
 type Period = '7d' | '30d' | '90d' | 'all'
 
 const PERIODS: { value: Period; label: string }[] = [
-  { value: '7d', label: '7 dias' },
-  { value: '30d', label: '30 dias' },
-  { value: '90d', label: '90 dias' },
-  { value: 'all', label: 'Tudo' },
+  { value: '7d', label: 'Últimos 7 dias' },
+  { value: '30d', label: 'Últimos 30 dias' },
+  { value: '90d', label: 'Últimos 90 dias' },
+  { value: 'all', label: 'Todo o período' },
 ]
 
-const STATUS_COLORS: Record<string, string> = {
-  'Ativo': '#12B981',
-  'Em risco': '#e1493c',
-  'Em negociação': '#F59E0B',
-  'Inativo': '#6B7280',
+const ORIGIN_COLORS: Record<string, string> = {
+  'Google Ads':         '#4285F4',
+  'Meta Ads':           '#1877F2',
+  'LinkedIn Ads':       '#0A66C2',
+  'Instagram Orgânico': '#E1306C',
+  'TikTok Ads':         '#000000',
+  'WhatsApp':           '#25D366',
+  'Indicação':          '#12B981',
+  'Prospecção Ativa':   '#F59E0B',
+  'Evento':             '#8B5CF6',
+  'E-mail Marketing':   '#5B8CFF',
+  'Orgânico / SEO':     '#10B981',
+  'Referral':           '#06B6D4',
+  'Personalizado':      '#6B7280',
+  'Sem origem':         '#9CA3AF',
 }
 
-const CHANNEL_COLORS: Record<string, string> = {
-  instagram: '#E1306C',
-  linkedin: '#0A66C2',
-  facebook: '#1877F2',
-  tiktok: '#010101',
-  youtube: '#FF0000',
-  email: '#5B8CFF',
-  outro: '#8B5CF6',
+const cutoffFor = (p: Period) => {
+  if (p === 'all') return 0
+  const days = p === '7d' ? 7 : p === '30d' ? 30 : 90
+  return Date.now() - days * 86400000
 }
 
-function filterByPeriod<T extends { created_at: string }>(items: T[], period: Period): T[] {
-  if (period === 'all') return items
-  const days = period === '7d' ? 7 : period === '30d' ? 30 : 90
-  const cutoff = Date.now() - days * 86400000
-  return items.filter(i => new Date(i.created_at).getTime() >= cutoff)
-}
+const inPeriod = (date: string, cutoff: number) => cutoff === 0 || new Date(date).getTime() >= cutoff
 
-function buildMrrTrend(clients: ClientRow[]) {
-  const now = new Date()
-  return Array.from({ length: 6 }, (_, i) => {
-    const m = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
-    const label = m.toLocaleString('pt-BR', { month: 'short' })
-    const mrr = clients
-      .filter(c => c.status === 'Ativo' && new Date(c.created_at) <= m)
-      .reduce((s, c) => s + c.mrr, 0)
-    return { month: label, mrr }
-  })
-}
+const fmtBR = (v: number) => v.toLocaleString('pt-BR')
+const money = (v: number) => `R$ ${fmtBR(Math.round(v))}`
 
-function buildContentByChannel(items: ContentRow[]) {
-  const map: Record<string, number> = {}
-  items.forEach(i => {
-    const ch = i.channel ?? 'outro'
-    map[ch] = (map[ch] ?? 0) + 1
-  })
-  return Object.entries(map).map(([channel, count]) => ({
-    channel: channel.charAt(0).toUpperCase() + channel.slice(1),
-    count,
-    fill: CHANNEL_COLORS[channel] ?? '#8B5CF6',
-  }))
-}
-
-export function RelatoriosClient({ clients, leads, contentItems, approvals, automations }: Props) {
+export function RelatoriosClient({ clients, leads, stages, goals, users, funnels }: Props) {
   const [period, setPeriod] = useState<Period>('30d')
+  const [responsibleFilter, setResponsibleFilter] = useState<string>('all')
+  const [funnelFilter, setFunnelFilter] = useState<string>('all')
 
-  const filteredLeads = filterByPeriod(leads, period)
-  const filteredContent = filterByPeriod(contentItems, period)
-  const filteredApprovals = filterByPeriod(approvals, period)
+  const cutoff = cutoffFor(period)
 
-  const mrr = clients.filter(c => c.status === 'Ativo').reduce((s, c) => s + c.mrr, 0)
-  const activeClients = clients.filter(c => c.status === 'Ativo').length
-  const riskClients = clients.filter(c => c.status === 'Em risco').length
+  // ── Apply filters ────────────────────────────────────────────────
+  const filteredLeads = useMemo(() => {
+    return leads.filter(l => {
+      if (responsibleFilter !== 'all' && l.responsible_id !== responsibleFilter) return false
+      if (funnelFilter !== 'all' && l.funnel_id !== funnelFilter) return false
+      return inPeriod(l.created_at, cutoff)
+    })
+  }, [leads, cutoff, responsibleFilter, funnelFilter])
+
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => {
+      if (responsibleFilter !== 'all' && c.responsible_id !== responsibleFilter) return false
+      return inPeriod(c.created_at, cutoff)
+    })
+  }, [clients, cutoff, responsibleFilter])
+
+  // ── KPIs ─────────────────────────────────────────────────────────
+  const totalMrr = clients.filter(c => c.status === 'Ativo').reduce((s, c) => s + c.mrr, 0)
   const wonLeads = filteredLeads.filter(l => l.won_at).length
-  const conversionRate = filteredLeads.length > 0 ? Math.round((wonLeads / filteredLeads.length) * 100) : 0
+  const lostLeads = filteredLeads.filter(l => l.lost_at).length
+  const closedLeads = wonLeads + lostLeads
+  const conversionRate = closedLeads > 0 ? Math.round((wonLeads / closedLeads) * 100) : 0
   const wonRevenue = filteredLeads.filter(l => l.won_at).reduce((s, l) => s + (l.value ?? 0), 0)
-  const approvedContent = filteredApprovals.filter(a => a.status === 'aprovado').length
-  const totalRuns = automations.reduce((s, a) => s + a.runs_count, 0)
+  const newLeadsCount = filteredLeads.length
+  // "Propostas" — leads que chegaram em alguma etapa de proposta ou têm valor declarado
+  const proposalsCount = filteredLeads.filter(l => l.value && l.value > 0).length
+  const newClientsCount = filteredClients.length
 
-  const mrrTrend = useMemo(() => buildMrrTrend(clients), [clients])
-  const contentByChannel = useMemo(() => buildContentByChannel(filteredContent), [filteredContent])
+  // ── Comparações com período anterior (delta) ─────────────────────
+  const previousCutoff = cutoff > 0 ? cutoff - (Date.now() - cutoff) : 0
+  const previousLeads = leads.filter(l => {
+    const t = new Date(l.created_at).getTime()
+    return t >= previousCutoff && t < cutoff
+  })
+  const leadsDelta = previousLeads.length > 0
+    ? Math.round(((newLeadsCount - previousLeads.length) / previousLeads.length) * 100)
+    : (newLeadsCount > 0 ? 100 : 0)
 
-  const clientsByStatus = useMemo(() => {
-    const map: Record<string, number> = {}
-    clients.forEach(c => { map[c.status] = (map[c.status] ?? 0) + 1 })
-    return Object.entries(map).map(([name, value]) => ({ name, value, fill: STATUS_COLORS[name] ?? '#6B7280' }))
+  // ── Charts data ──────────────────────────────────────────────────
+
+  // MRR evolution (últimos 6 meses)
+  const mrrTrend = useMemo(() => {
+    const now = new Date()
+    return Array.from({ length: 6 }, (_, i) => {
+      const m = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() - 5 + i + 1, 0)
+      const label = m.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')
+      const mrr = clients
+        .filter(c => c.status === 'Ativo' && new Date(c.created_at) <= endOfMonth)
+        .reduce((s, c) => s + c.mrr, 0)
+      return { month: label, mrr }
+    })
   }, [clients])
 
-const exportPDF = () => {
-    const w = window.open('', '_blank')!
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório CYCLO — ${new Date().toLocaleDateString('pt-BR')}</title>
-    <style>body{font-family:Arial,sans-serif;padding:40px;color:#111;max-width:900px;margin:0 auto}h1{color:#5B8CFF;border-bottom:2px solid #5B8CFF;padding-bottom:8px}h2{color:#333;margin-top:32px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#5B8CFF;color:white;padding:8px 12px;text-align:left;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #eee;font-size:13px}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:16px 0}.kpi{background:#f8f9ff;border:1px solid #e8eeff;border-radius:8px;padding:16px}.kpi-value{font-size:24px;font-weight:bold;color:#5B8CFF}.kpi-label{font-size:11px;color:#666;margin-top:4px}@media print{body{padding:20px}}</style></head><body>
-    <h1>Relatório CYCLO — ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</h1>
-    <p style="color:#666;font-size:13px">Período: ${period === '7d' ? '7 dias' : period === '30d' ? '30 dias' : period === '90d' ? '90 dias' : 'Todo o período'}</p>
-    <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-value">R$ ${mrr.toLocaleString('pt-BR')}</div><div class="kpi-label">MRR Total</div></div>
-      <div class="kpi"><div class="kpi-value">${activeClients}</div><div class="kpi-label">Clientes Ativos</div></div>
-      <div class="kpi"><div class="kpi-value">${conversionRate}%</div><div class="kpi-label">Conversão de Leads</div></div>
-      <div class="kpi"><div class="kpi-value">R$ ${wonRevenue.toLocaleString('pt-BR')}</div><div class="kpi-label">Receita Fechada</div></div>
-    </div>
-    <h2>Clientes</h2>
-    <table><tr><th>Nome</th><th>Status</th><th>MRR</th></tr>
-    ${clients.map(c => `<tr><td>${c.name}</td><td>${c.status}</td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td></tr>`).join('')}
-    </table>
-    <h2>Pipeline</h2>
-    <table><tr><th>Lead</th><th>Valor</th><th>Status</th></tr>
-    ${leads.map(l => `<tr><td>${l.id}</td><td>R$ ${(l.value ?? 0).toLocaleString('pt-BR')}</td><td>${l.won_at ? 'Ganho' : l.lost_at ? 'Perdido' : 'Em andamento'}</td></tr>`).join('')}
-    </table>
-    <p style="margin-top:40px;font-size:11px;color:#999;text-align:center">Gerado pelo CYCLO — ${new Date().toLocaleString('pt-BR')}</p>
-    </body></html>`)
-    w.document.close()
-    w.focus()
-    setTimeout(() => { w.print(); w.close() }, 500)
-  }
+  // Origem de leads
+  const leadOrigins = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredLeads.forEach(l => {
+      const o = l.origin ?? 'Sem origem'
+      map[o] = (map[o] ?? 0) + 1
+    })
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .map(([origin, count]) => ({
+        origin,
+        count,
+        fill: ORIGIN_COLORS[origin] ?? '#8B5CF6',
+      }))
+  }, [filteredLeads])
 
-  const exportHTML = () => {
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relatório CYCLO</title>
-    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f6fb;color:#111;padding:32px}h1{font-size:28px;font-weight:700;color:#5B8CFF;margin-bottom:4px}p.sub{color:#666;font-size:14px;margin-bottom:24px}.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}.kpi{background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}.kpi-value{font-size:28px;font-weight:700;color:#5B8CFF}.kpi-label{font-size:12px;color:#666;margin-top:6px}.section{background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:24px}h2{font-size:16px;font-weight:600;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #eee}table{width:100%;border-collapse:collapse}th{background:#f4f6fb;padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}.green{background:#d1fae5;color:#065f46}.red{background:#fee2e2;color:#991b1b}.yellow{background:#fef3c7;color:#92400e}.gray{background:#f3f4f6;color:#374151}footer{text-align:center;font-size:11px;color:#999;margin-top:32px}</style></head><body>
-    <h1>Relatório de Performance</h1>
-    <p class="sub">Agência · ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · Período: ${period === '7d' ? '7 dias' : period === '30d' ? '30 dias' : period === '90d' ? '90 dias' : 'Completo'}</p>
-    <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-value">R$ ${mrr.toLocaleString('pt-BR')}</div><div class="kpi-label">MRR Total</div></div>
-      <div class="kpi"><div class="kpi-value">${activeClients}</div><div class="kpi-label">Clientes Ativos</div></div>
-      <div class="kpi"><div class="kpi-value">${conversionRate}%</div><div class="kpi-label">Taxa de Conversão</div></div>
-      <div class="kpi"><div class="kpi-value">R$ ${wonRevenue.toLocaleString('pt-BR')}</div><div class="kpi-label">Receita Fechada</div></div>
-      <div class="kpi"><div class="kpi-value">${riskClients}</div><div class="kpi-label">Clientes em Risco</div></div>
-      <div class="kpi"><div class="kpi-value">${totalRuns}</div><div class="kpi-label">Execuções Automação</div></div>
-    </div>
-    <div class="section"><h2>Clientes</h2>
-    <table><tr><th>Nome</th><th>Status</th><th>MRR</th></tr>
-    ${clients.map(c => {
-      const badgeClass = c.status === 'Ativo' ? 'green' : c.status === 'Em risco' ? 'red' : 'gray'
-      return `<tr><td>${c.name}</td><td><span class="badge ${badgeClass}">${c.status}</span></td><td>R$ ${c.mrr.toLocaleString('pt-BR')}</td></tr>`
-    }).join('')}</table></div>
-    <footer>Gerado pelo CYCLO · ${new Date().toLocaleString('pt-BR')}</footer></body></html>`
+  // Funil de conversão (leads por etapa)
+  const funnelData = useMemo(() => {
+    const visibleStages = funnelFilter === 'all'
+      ? stages
+      : stages.filter(s => s.funnel_id === funnelFilter)
+    return visibleStages.map(stage => ({
+      stage: stage.name,
+      count: filteredLeads.filter(l => l.stage_id === stage.id && !l.won_at && !l.lost_at).length,
+      fill: stage.color,
+    }))
+  }, [stages, filteredLeads, funnelFilter])
 
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
-    a.download = `relatorio-cyclo-${new Date().toISOString().slice(0, 10)}.html`
-    a.click()
-  }
+  // Performance por vendedor
+  const sellerPerformance = useMemo(() => {
+    return users.map(u => {
+      const userLeads = filteredLeads.filter(l => l.responsible_id === u.id)
+      const won = userLeads.filter(l => l.won_at).length
+      const revenue = userLeads.filter(l => l.won_at).reduce((s, l) => s + (l.value ?? 0), 0)
+      return {
+        name: u.full_name?.split(' ')[0] ?? '—',
+        leads: userLeads.length,
+        won,
+        revenue,
+      }
+    }).filter(s => s.leads > 0).sort((a, b) => b.revenue - a.revenue)
+  }, [users, filteredLeads])
 
+  // Motivos de perda
+  const lossReasons = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredLeads.filter(l => l.lost_at && l.lost_reason).forEach(l => {
+      const r = l.lost_reason ?? 'Sem motivo'
+      map[r] = (map[r] ?? 0) + 1
+    })
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6)
+  }, [filteredLeads])
+
+  // Total clientes pipeline (leads ativos por funil)
+  const clientsPipelineByFunnel = useMemo(() => {
+    return funnels.map(f => ({
+      funnel: f.name,
+      count: filteredLeads.filter(l => l.funnel_id === f.id && !l.won_at && !l.lost_at).length,
+      fill: f.is_default ? '#5B8CFF' : '#8B5CF6',
+    })).filter(d => d.count > 0)
+  }, [funnels, filteredLeads])
+
+  // ── Export ───────────────────────────────────────────────────────
   const exportCSV = () => {
-    const rows = [
-      ['Métrica', 'Valor'],
-      ['MRR Total', `R$ ${mrr.toLocaleString('pt-BR')}`],
-      ['Clientes Ativos', String(activeClients)],
-      ['Clientes em Risco', String(riskClients)],
-      ['Leads (período)', String(filteredLeads.length)],
-      ['Taxa de Conversão', `${conversionRate}%`],
-      ['Receita Fechada', `R$ ${wonRevenue.toLocaleString('pt-BR')}`],
-      ['Aprovações', String(filteredApprovals.length)],
-      ['Conteúdos', String(filteredContent.length)],
-      ['Execuções de Automação', String(totalRuns)],
+    const rows: string[][] = [
+      ['KPI', 'Valor'],
+      ['MRR Total Ativo', money(totalMrr)],
+      ['Conversão', `${conversionRate}%`],
+      ['Receita Fechada (período)', money(wonRevenue)],
+      ['Novos Leads (período)', String(newLeadsCount)],
+      ['Nº Propostas (período)', String(proposalsCount)],
+      ['Clientes Novos (período)', String(newClientsCount)],
     ]
-    const csv = rows.map(r => r.join(',')).join('\n')
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     a.download = `relatorio-cyclo-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
   }
 
-  const kpis = [
-    { label: 'MRR Total', value: `R$ ${mrr.toLocaleString('pt-BR')}`, sub: `${activeClients} clientes ativos`, icon: DollarSign, color: '#5B8CFF' },
-    { label: 'Conversão de Leads', value: `${conversionRate}%`, sub: `${wonLeads} de ${filteredLeads.length} leads`, icon: TrendingUp, color: '#12B981' },
-    { label: 'Receita Fechada', value: `R$ ${wonRevenue.toLocaleString('pt-BR')}`, sub: 'no período', icon: Activity, color: '#8B5CF6' },
-    { label: 'Aprovações', value: String(filteredApprovals.length), sub: `${approvedContent} aprovadas`, icon: CheckSquare, color: '#F59E0B' },
-    { label: 'Conteúdos', value: String(filteredContent.length), sub: 'criados no período', icon: FileText, color: '#e1493c' },
-    { label: 'Automações', value: String(totalRuns), sub: 'execuções totais', icon: Zap, color: '#F59E0B' },
-    { label: 'Clientes em Risco', value: String(riskClients), sub: 'precisam de atenção', icon: Users, color: riskClients > 0 ? '#e1493c' : '#12B981' },
-    { label: 'Clientes Totais', value: String(clients.length), sub: 'na carteira', icon: Users, color: '#5B8CFF' },
+  const KPI_CARDS = [
+    {
+      label: 'MRR Total',
+      value: money(totalMrr),
+      sub: `${clients.filter(c => c.status === 'Ativo').length} clientes ativos`,
+      icon: DollarSign,
+      color: '#5B8CFF',
+      bgGradient: 'from-[#5B8CFF]/10 to-transparent',
+    },
+    {
+      label: 'Conversão de Leads',
+      value: `${conversionRate}%`,
+      sub: `${wonLeads} ganhos · ${lostLeads} perdidos`,
+      icon: Target,
+      color: '#12B981',
+      bgGradient: 'from-[#12B981]/10 to-transparent',
+    },
+    {
+      label: 'Receita Fechada',
+      value: money(wonRevenue),
+      sub: 'no período selecionado',
+      icon: Trophy,
+      color: '#F59E0B',
+      bgGradient: 'from-[#F59E0B]/10 to-transparent',
+    },
+    {
+      label: 'Novos Leads',
+      value: fmtBR(newLeadsCount),
+      sub: leadsDelta > 0 ? `+${leadsDelta}% vs período anterior` : `${leadsDelta}% vs período anterior`,
+      icon: UserPlus,
+      color: '#0EA5E9',
+      bgGradient: 'from-[#0EA5E9]/10 to-transparent',
+      deltaPositive: leadsDelta > 0,
+    },
+    {
+      label: 'Nº de Propostas',
+      value: fmtBR(proposalsCount),
+      sub: 'propostas enviadas',
+      icon: FileText,
+      color: '#8B5CF6',
+      bgGradient: 'from-[#8B5CF6]/10 to-transparent',
+    },
+    {
+      label: 'Clientes no Período',
+      value: fmtBR(newClientsCount),
+      sub: 'novos clientes na carteira',
+      icon: Users,
+      color: '#EC4899',
+      bgGradient: 'from-[#EC4899]/10 to-transparent',
+    },
   ]
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">Relatórios</h2>
-          <p className="text-sm text-muted-foreground">Visão geral do desempenho da agência</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-muted rounded-lg p-1 gap-1">
-            {PERIODS.map(p => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                className={cn(
-                  'px-3 py-1 rounded-md text-xs font-semibold transition-all',
-                  period === p.value
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
+    <div className="space-y-5">
+      {/* ── Hero com filtros ────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-[#5B8CFF]/8 via-[#8B5CF6]/5 to-transparent p-6">
+        <div className="absolute -top-16 -right-16 w-72 h-72 rounded-full bg-[#5B8CFF]/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-72 h-72 rounded-full bg-[#8B5CF6]/8 blur-3xl pointer-events-none" />
+
+        <div className="relative flex items-end justify-between gap-6 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <BarChartIcon className="w-4 h-4 text-[#5B8CFF]" />
+              <span className="text-xs font-bold uppercase tracking-widest text-[#5B8CFF]">Business Intelligence</span>
+            </div>
+            <h2 className="text-3xl font-black tracking-tight">Relatórios</h2>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+              Indicadores em tempo real do seu negócio — pipeline, conversão, receita e performance da equipe.
+            </p>
           </div>
-          <Button size="sm" variant="outline" onClick={exportCSV} className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> CSV
+          <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5 text-xs">
+            <Download className="w-3.5 h-3.5" /> Exportar
           </Button>
-          <Button size="sm" variant="outline" onClick={exportHTML} className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> HTML
-          </Button>
-          <Button size="sm" variant="outline" onClick={exportPDF} className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> PDF
-          </Button>
+        </div>
+
+        {/* Filter bar */}
+        <div className="relative flex flex-wrap gap-2 mt-5 pt-5 border-t border-border/50">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground mr-1">
+            <Filter className="w-3.5 h-3.5" /> FILTROS:
+          </div>
+          <Select value={period} onValueChange={v => setPeriod(v as Period)}>
+            <SelectTrigger className="w-[180px] h-9 text-sm bg-card"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {PERIODS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={responsibleFilter} onValueChange={v => setResponsibleFilter(v ?? 'all')}>
+            <SelectTrigger className="w-[180px] h-9 text-sm bg-card"><SelectValue placeholder="Responsável" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os responsáveis</SelectItem>
+              {users.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name ?? u.id}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {funnels.length > 1 && (
+            <Select value={funnelFilter} onValueChange={v => setFunnelFilter(v ?? 'all')}>
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os funis</SelectItem>
+                {funnels.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
-      {/* KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {kpis.slice(0, 4).map((kpi, i) => {
-          const Icon = kpi.icon
+      {/* ── 6 KPI cards premium ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {KPI_CARDS.map((k, i) => {
+          const Icon = k.icon
           return (
-            <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card className="border-border shadow-none">
+            <motion.div
+              key={k.label}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+            >
+              <Card className={cn('border-border shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br', k.bgGradient)}>
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="text-xs font-medium text-muted-foreground">{kpi.label}</p>
-                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: `${kpi.color}15` }}>
-                      <Icon className="w-3.5 h-3.5" style={{ color: kpi.color }} />
+                  <div className="flex items-start justify-between mb-2.5">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${k.color}20` }}>
+                      <Icon className="w-4 h-4" style={{ color: k.color }} />
                     </div>
+                    {'deltaPositive' in k && (
+                      <span className={cn('text-[10px] font-bold flex items-center gap-0.5', k.deltaPositive ? 'text-[#12B981]' : 'text-[#e1493c]')}>
+                        {k.deltaPositive ? <ArrowUpRight className="w-2.5 h-2.5" /> : <ArrowDownRight className="w-2.5 h-2.5" />}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-2xl font-bold">{kpi.value}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-tight">{k.label}</p>
+                  <p className="text-xl font-black tabular-nums mt-1 leading-tight" style={{ color: k.color }}>{k.value}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1 truncate">{k.sub}</p>
                 </CardContent>
               </Card>
             </motion.div>
@@ -257,112 +360,71 @@ const exportPDF = () => {
         })}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {kpis.slice(4).map((kpi, i) => {
-          const Icon = kpi.icon
-          return (
-            <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: (i + 4) * 0.05 }}>
-              <Card className="border-border shadow-none">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="text-xs font-medium text-muted-foreground">{kpi.label}</p>
-                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: `${kpi.color}15` }}>
-                      <Icon className="w-3.5 h-3.5" style={{ color: kpi.color }} />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold">{kpi.value}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )
-        })}
-      </div>
+      {/* ── Grid 2 colunas: Evolução MRR + Funil ───────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* MRR Trend */}
-        <Card className="border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Evolução do MRR</CardTitle>
+        {/* MRR Evolution */}
+        <Card className="border-border shadow-sm lg:col-span-2">
+          <CardHeader className="pb-2 flex flex-row items-start justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#5B8CFF]" /> Evolução do MRR
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Receita recorrente mensal nos últimos 6 meses</p>
+            </div>
+            <Badge className="text-[10px] bg-[#5B8CFF]/10 text-[#5B8CFF] border-0 font-bold">{money(totalMrr)} hoje</Badge>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={mrrTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={mrrTrend}>
                 <defs>
-                  <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#5B8CFF" stopOpacity={0.2} />
+                  <linearGradient id="mrrGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#5B8CFF" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#5B8CFF" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip
-                  contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                  formatter={(v) => [`R$ ${Number(v).toLocaleString('pt-BR')}`, 'MRR']}
-                />
-                <Area type="monotone" dataKey="mrr" stroke="#5B8CFF" strokeWidth={2} fill="url(#mrrGrad)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
+                <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} tickFormatter={v => `R$ ${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} formatter={v => money(v as number)} />
+                <Area type="monotone" dataKey="mrr" stroke="#5B8CFF" strokeWidth={2.5} fill="url(#mrrGradient)" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Content by Channel */}
-        <Card className="border-border shadow-none">
+        {/* Origem de Leads */}
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Conteúdo por Canal</CardTitle>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#F59E0B]" /> Origem dos Leads
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">De onde seus leads estão vindo</p>
           </CardHeader>
           <CardContent>
-            {contentByChannel.length === 0 ? (
-              <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">Nenhum conteúdo no período</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={contentByChannel} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="channel" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {contentByChannel.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Clients by Status */}
-        <Card className="border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Clientes por Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {clientsByStatus.length === 0 ? (
-              <div className="flex items-center justify-center h-[160px] text-sm text-muted-foreground">Sem dados</div>
+            {leadOrigins.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground text-xs">
+                <Sparkles className="w-7 h-7 mx-auto mb-2 opacity-30" />
+                Nenhum lead com origem no período.
+              </div>
             ) : (
               <>
-                <ResponsiveContainer width="100%" height={140}>
+                <ResponsiveContainer width="100%" height={160}>
                   <PieChart>
-                    <Pie data={clientsByStatus} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={65}>
-                      {clientsByStatus.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
+                    <Pie data={leadOrigins} dataKey="count" nameKey="origin" innerRadius={45} outerRadius={70} paddingAngle={2}>
+                      {leadOrigins.map((d, i) => <Cell key={i} fill={d.fill} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+                    <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-1">
-                  {clientsByStatus.map(s => (
-                    <div key={s.name} className="flex items-center gap-1.5 text-xs">
-                      <span className="w-2 h-2 rounded-full" style={{ background: s.fill }} />
-                      <span className="text-muted-foreground">{s.name}</span>
-                      <span className="font-semibold">{s.value}</span>
+                <div className="space-y-1 mt-2 max-h-[80px] overflow-y-auto">
+                  {leadOrigins.slice(0, 5).map(o => (
+                    <div key={o.origin} className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: o.fill }} />
+                        <span className="truncate">{o.origin}</span>
+                      </div>
+                      <span className="font-bold tabular-nums shrink-0">{o.count}</span>
                     </div>
                   ))}
                 </div>
@@ -370,36 +432,239 @@ const exportPDF = () => {
             )}
           </CardContent>
         </Card>
+      </div>
 
-        {/* Approval stats */}
-        <Card className="border-border shadow-none">
+      {/* ── Grid 3 colunas: Funil + Performance + Total Pipeline ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Funil de conversão */}
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Status das Aprovações</CardTitle>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Activity className="w-4 h-4 text-[#8B5CF6]" /> Funil de Conversão
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Leads ativos por etapa</p>
           </CardHeader>
-          <CardContent className="space-y-3 pt-2">
-            {[
-              { label: 'Aprovadas', color: '#12B981', count: filteredApprovals.filter(a => a.status === 'aprovado').length },
-              { label: 'Aguardando', color: '#F59E0B', count: filteredApprovals.filter(a => a.status === 'aguardando').length },
-              { label: 'Ajuste', color: '#e1493c', count: filteredApprovals.filter(a => a.status === 'ajuste').length },
-              { label: 'Reprovadas', color: '#6B7280', count: filteredApprovals.filter(a => a.status === 'reprovado').length },
-            ].map(row => (
-              <div key={row.label} className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 text-xs w-24">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: row.color }} />
-                  <span className="text-muted-foreground">{row.label}</span>
-                </div>
-                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: filteredApprovals.length > 0 ? `${(row.count / filteredApprovals.length) * 100}%` : '0%',
-                      background: row.color,
-                    }}
-                  />
-                </div>
-                <span className="text-xs font-semibold w-4 text-right">{row.count}</span>
+          <CardContent>
+            {funnelData.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">Sem dados de pipeline.</p>
+            ) : (
+              <div className="space-y-2 pt-1">
+                {funnelData.map(s => {
+                  const max = Math.max(...funnelData.map(d => d.count), 1)
+                  const widthPct = (s.count / max) * 100
+                  return (
+                    <div key={s.stage} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium truncate">{s.stage}</span>
+                        <span className="font-bold tabular-nums" style={{ color: s.fill }}>{s.count}</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: s.fill }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${widthPct}%` }}
+                          transition={{ duration: 0.8, delay: 0.1 }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Total clientes pipeline */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#0EA5E9]" /> Total no Pipeline
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Oportunidades por funil ({filteredLeads.filter(l => !l.won_at && !l.lost_at).length} total)</p>
+          </CardHeader>
+          <CardContent>
+            {clientsPipelineByFunnel.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">Sem oportunidades.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={clientsPipelineByFunnel}
+                    dataKey="count"
+                    nameKey="funnel"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    label={(p) => String((p as { count?: number }).count ?? '')}
+                    labelLine={false}
+                  >
+                    {clientsPipelineByFunnel.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Performance vendedores */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-[#F59E0B]" /> Top Vendedores
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Por receita fechada no período</p>
+          </CardHeader>
+          <CardContent>
+            {sellerPerformance.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">Sem performance no período.</p>
+            ) : (
+              <div className="space-y-2.5">
+                {sellerPerformance.slice(0, 5).map((s, i) => (
+                  <div key={s.name} className="flex items-center gap-2.5">
+                    <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0',
+                      i === 0 ? 'bg-[#F59E0B]' : i === 1 ? 'bg-[#9CA3AF]' : i === 2 ? 'bg-[#92400E]' : 'bg-muted text-muted-foreground'
+                    )}>
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate">{s.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{s.won}/{s.leads} ganhos</p>
+                    </div>
+                    <p className="text-xs font-bold tabular-nums shrink-0" style={{ color: '#12B981' }}>{money(s.revenue)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Grid: Metas + Propostas + Perdas ───────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Metas em andamento */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Target className="w-4 h-4 text-[#5B8CFF]" /> Metas em andamento
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{goals.length} metas cadastradas</p>
+          </CardHeader>
+          <CardContent>
+            {goals.length === 0 ? (
+              <div className="text-center py-6">
+                <Target className="w-8 h-8 mx-auto text-muted-foreground/30 mb-2" />
+                <p className="text-xs text-muted-foreground">Nenhuma meta cadastrada.</p>
+                <a href="/metas" className="text-[11px] text-[#5B8CFF] hover:underline">+ Criar primeira meta</a>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {goals.slice(0, 4).map(g => {
+                  const pct = Math.min((g.current_value / g.target_value) * 100, 100)
+                  return (
+                    <div key={g.id} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium truncate">{g.label}</span>
+                        <span className="font-bold tabular-nums" style={{ color: g.color }}>{Math.round(pct)}%</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: g.color }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.8 }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        {g.unit === 'R$' ? money(g.current_value) : `${fmtBR(g.current_value)} ${g.unit ?? ''}`}
+                        {' / '}
+                        {g.unit === 'R$' ? money(g.target_value) : `${fmtBR(g.target_value)} ${g.unit ?? ''}`}
+                      </p>
+                    </div>
+                  )
+                })}
+                {goals.length > 4 && (
+                  <a href="/metas" className="block text-[11px] text-[#5B8CFF] hover:underline pt-1">
+                    Ver todas as {goals.length} metas →
+                  </a>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Receita por mês */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-[#12B981]" /> Receita Ganha
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Valor fechado no período</p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black tracking-tight" style={{ color: '#12B981' }}>{money(wonRevenue)}</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">de {wonLeads} negociações ganhas</p>
+            {wonLeads > 0 && (
+              <p className="text-[11px] mt-3 p-2 bg-[#12B981]/8 text-[#12B981] rounded-lg font-medium">
+                Ticket médio: {money(wonRevenue / wonLeads)}
+              </p>
+            )}
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+              <div className="p-2 rounded-lg bg-muted/40">
+                <p className="text-lg font-black tabular-nums text-[#12B981]">{wonLeads}</p>
+                <p className="text-[10px] text-muted-foreground">Ganhos</p>
+              </div>
+              <div className="p-2 rounded-lg bg-muted/40">
+                <p className="text-lg font-black tabular-nums text-[#e1493c]">{lostLeads}</p>
+                <p className="text-[10px] text-muted-foreground">Perdidos</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Motivos de perda */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Zap className="w-4 h-4 text-[#e1493c]" /> Motivos de Perda
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Por que os leads não fecharam</p>
+          </CardHeader>
+          <CardContent>
+            {lossReasons.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">Nenhum lead perdido com motivo registrado.</p>
+            ) : (
+              <div className="space-y-2">
+                {lossReasons.map(([reason, count]) => {
+                  const max = Math.max(...lossReasons.map(r => r[1]), 1)
+                  const widthPct = (count / max) * 100
+                  return (
+                    <div key={reason} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="truncate">{reason}</span>
+                        <span className="font-bold tabular-nums text-[#e1493c]">{count}</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-[#e1493c]"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${widthPct}%` }}
+                          transition={{ duration: 0.6 }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

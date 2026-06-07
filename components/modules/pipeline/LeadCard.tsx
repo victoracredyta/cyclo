@@ -71,9 +71,13 @@ export function LeadCard({ lead, isDragging = false, availableTags = [], onTagCh
 
   const navigate = () => router.push(`/pipeline/${lead.id}`)
 
+  // Prefetch on hover for snappy navigation
+  const handlePrefetch = () => router.prefetch(`/pipeline/${lead.id}`)
+
   return (
     <div
       ref={setNodeRef}
+      onMouseEnter={handlePrefetch}
       style={{
         ...style,
         borderColor: (isSortableDragging || isDragging)
