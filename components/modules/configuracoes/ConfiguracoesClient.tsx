@@ -25,6 +25,7 @@ import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { AppUser } from '@/types/database'
 import { ColorPicker } from '@/components/common/ColorPicker'
+import { NotificationPrefsPanel } from './NotificationPrefsPanel'
 
 type OrgUser = {
   id: string
@@ -1146,34 +1147,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
       )}
 
       {/* ─── NOTIFICAÇÕES ─── */}
-      {tab === 'notificacoes' && (
-        <div className="max-w-lg">
-          <Card className="border-border shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Preferências de notificação</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {[
-                { label: 'Nova aprovação pendente', desc: 'Quando um cliente envia feedback', enabled: true },
-                { label: 'Lead mudou de etapa', desc: 'Quando um lead avança no pipeline', enabled: true },
-                { label: 'Lead novo atribuído a você', desc: 'Quando a distribuição automática te atribui um lead', enabled: true },
-                { label: 'Lead parado há muito tempo', desc: 'Quando um card fica parado além do limite configurado', enabled: true },
-                { label: 'Cliente em risco', desc: 'Quando o health score cai abaixo de 40%', enabled: true },
-                { label: 'Nova mensagem no atendimento', desc: 'Quando um cliente responde', enabled: false },
-                { label: 'Meta atingida', desc: 'Quando uma meta mensal é alcançada', enabled: false },
-              ].map(n => (
-                <div key={n.label} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{n.label}</p>
-                    <p className="text-xs text-muted-foreground">{n.desc}</p>
-                  </div>
-                  <Toggle checked={n.enabled} onChange={() => toast.info('Preferência salva!')} />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {tab === 'notificacoes' && <NotificationPrefsPanel appUser={appUser} />}
 
       {/* ─── SEGURANÇA ─── */}
       {tab === 'seguranca' && (

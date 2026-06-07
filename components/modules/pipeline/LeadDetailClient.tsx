@@ -351,17 +351,26 @@ export function LeadDetailClient({ lead: initialLead, stages, activities: initia
       oldResp ? `De ${oldResp.full_name ?? '—'} → ${newResp?.full_name ?? '—'}` : `Atribuído a ${newResp?.full_name ?? '—'}`,
     )
 
-    // Create in-app notification for the new owner
+    // Check target's in-app pref before creating notification
     const me = await getMe()
     const fromName = me?.full_name ?? 'Alguém'
-    await supabase.from('notifications').insert({
-      organization_id: lead.organization_id,
-      user_id: transferTo,
-      type: 'transferencia',
-      title: `${fromName} transferiu um lead para você`,
-      message: `${lead.name}${lead.company ? ` — ${lead.company}` : ''}`,
-      link: `/pipeline/${lead.id}`,
-    })
+    const { data: pref } = await supabase
+      .from('notification_prefs')
+      .select('in_app_enabled')
+      .eq('user_id', transferTo)
+      .eq('event_type', 'lead_transfer')
+      .maybeSingle()
+
+    if (!pref || pref.in_app_enabled !== false) {
+      await supabase.from('notifications').insert({
+        organization_id: lead.organization_id,
+        user_id: transferTo,
+        type: 'transferencia',
+        title: `${fromName} transferiu um lead para você`,
+        message: `${lead.name}${lead.company ? ` — ${lead.company}` : ''}`,
+        link: `/pipeline/${lead.id}`,
+      })
+    }
 
     // Send email notification (fire-and-forget, won't fail UI if SMTP not configured)
     fetch('/api/notifications/send-transfer', {

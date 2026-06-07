@@ -184,6 +184,17 @@ export interface Database {
         from_name: string | null
         updated_at: string
       }>
+      notification_prefs: TableDef<{
+        user_id: string
+        organization_id: string
+        event_type: string
+        in_app_enabled: boolean
+        email_enabled: boolean
+        email_to: string | null
+        email_subject: string | null
+        email_body: string | null
+        updated_at: string
+      }>
       lead_tasks: TableDef<{
         id: string
         lead_id: string
