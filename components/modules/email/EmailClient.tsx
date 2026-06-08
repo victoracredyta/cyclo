@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -85,6 +85,34 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
+  const [attachments, setAttachments] = useState<Array<{ filename: string; content: string; contentType: string; size: number }>>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    const totalSize = attachments.reduce((s, a) => s + a.size, 0)
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`${file.name}: máximo 10MB por arquivo`)
+        continue
+      }
+      if (totalSize + file.size > 25 * 1024 * 1024) {
+        toast.error('Total de anexos excede 25MB (limite de email)')
+        break
+      }
+      const buffer = await file.arrayBuffer()
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+      setAttachments(prev => [...prev, {
+        filename: file.name,
+        content: base64,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+      }])
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx))
   const [history, setHistory] = useState<EmailRecord[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState('')
@@ -214,25 +242,52 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
       return
     }
     setSending(true)
-    await new Promise(r => setTimeout(r, 1200))
+    try {
+      const res = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to,
+          subject,
+          body,
+          attachments: attachments.map(a => ({
+            filename: a.filename,
+            content: a.content,
+            contentType: a.contentType,
+          })),
+        }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody.error ?? 'Falha ao enviar email')
+      }
 
-    const record: EmailRecord = {
-      id: crypto.randomUUID(),
-      to,
-      subject,
-      body,
-      sentAt: new Date().toISOString(),
-      status: 'sent',
-      contactName: toName || to,
+      const record: EmailRecord = {
+        id: crypto.randomUUID(),
+        to,
+        subject,
+        body,
+        sentAt: new Date().toISOString(),
+        status: 'sent',
+        contactName: toName || to,
+      }
+      setHistory(prev => [record, ...prev])
+      toast.success(`Email enviado para ${toName || to}!${attachments.length ? ` Com ${attachments.length} anexo(s).` : ''}`)
+      setBody('')
+      setSubject('')
+      setTo('')
+      setToName('')
+      setSelectedTemplate('')
+      setAttachments([])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+      toast.error(msg, {
+        action: { label: 'Configurar SMTP', onClick: () => { window.location.href = '/integracoes?tab=email' } },
+        duration: 7000,
+      })
+    } finally {
+      setSending(false)
     }
-    setHistory(prev => [record, ...prev])
-    toast.success(`Email enviado para ${toName || to}!`)
-    setBody('')
-    setSubject('')
-    setTo('')
-    setToName('')
-    setSelectedTemplate('')
-    setSending(false)
   }
 
   return (
@@ -347,9 +402,42 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
                 />
               </div>
 
+              {/* Attachments list */}
+              {attachments.length > 0 && (
+                <div className="space-y-1.5 p-2.5 bg-muted/30 border border-border rounded-lg">
+                  {attachments.map((a, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
+                      <span className="font-medium truncate flex-1">{a.filename}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {(a.size / 1024).toFixed(0)} KB
+                      </span>
+                      <button onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-red-500 p-0.5 shrink-0">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground pt-1 border-t border-border">
+                    Total: {(attachments.reduce((s, a) => s + a.size, 0) / 1024).toFixed(0)} KB de 25 MB
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
-                <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  <Paperclip className="w-3.5 h-3.5" /> Anexar arquivo
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  Anexar arquivo{attachments.length > 0 ? ` (${attachments.length})` : ''}
                 </button>
                 <Button
                   onClick={sendEmail}

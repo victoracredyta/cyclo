@@ -192,6 +192,19 @@ export interface Database {
         google_api_key: string | null
         updated_at: string
       }>
+      team_invites: TableDef<{
+        id: string
+        organization_id: string
+        email: string
+        full_name: string | null
+        role: string | null
+        permission: string
+        invited_by: string | null
+        token: string
+        accepted_at: string | null
+        expires_at: string
+        created_at: string
+      }>
       notification_prefs: TableDef<{
         user_id: string
         organization_id: string

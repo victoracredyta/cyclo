@@ -164,8 +164,11 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [role, setRole] = useState(appUser?.role ?? '')
   const [savingProfile, setSavingProfile] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [invitePermission, setInvitePermission] = useState('Social Media')
+  const [inviteName, setInviteName] = useState('')
+  const [inviteRole, setInviteRole] = useState('')
+  const [invitePermission, setInvitePermission] = useState('Vendedor')
   const [inviting, setInviting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ url: string; emailSent: boolean } | null>(null)
   const [avatarUrl, setAvatarUrl] = useState(appUser?.avatar_url ?? '')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -436,10 +439,40 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const inviteUser = async () => {
     if (!inviteEmail.trim()) return
     setInviting(true)
-    toast.info('Convite enviado! O usuário receberá um email para criar a conta.')
-    setInviting(false)
+    try {
+      const res = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          full_name: inviteName.trim() || null,
+          role: inviteRole.trim() || null,
+          permission: invitePermission,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'Falha ao convidar')
+
+      setInviteResult({ url: body.accept_url, emailSent: body.email_sent })
+      if (body.email_sent) {
+        toast.success(`Convite enviado para ${inviteEmail}!`)
+      } else {
+        toast.warning('Convite criado, mas email não enviado. Copie o link abaixo.')
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro desconhecido')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const closeInviteModal = () => {
     setInviteOpen(false)
     setInviteEmail('')
+    setInviteName('')
+    setInviteRole('')
+    setInvitePermission('Vendedor')
+    setInviteResult(null)
   }
 
   const toggleUserStatus = async (userId: string, current: boolean) => {
@@ -603,55 +636,109 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
             })}
           </Card>
 
-          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <Dialog open={inviteOpen} onOpenChange={open => { if (!open) closeInviteModal(); else setInviteOpen(true) }}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader><DialogTitle>Convidar membro</DialogTitle></DialogHeader>
-              <div className="space-y-4 mt-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">E-mail</Label>
-                  <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="colaborador@email.com" type="email" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Permissão</Label>
-                  <Select value={invitePermission} onValueChange={v => { if (v) setInvitePermission(v) }}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(PERMISSION_CONFIG).map(([v, cfg]) => (
-                        <SelectItem key={v} value={v}>
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: cfg.color }} />
-                            {cfg.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
 
-                  {/* Permission description */}
-                  {PERMISSION_DESCRIPTIONS[invitePermission] && (
-                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PERMISSION_CONFIG[invitePermission]?.color }} />
-                        <p className="text-xs font-semibold">{PERMISSION_DESCRIPTIONS[invitePermission].title}</p>
-                      </div>
-                      <ul className="space-y-1">
-                        {PERMISSION_DESCRIPTIONS[invitePermission].items.map((item, i) => (
-                          <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                            <Check className="w-3 h-3 mt-0.5 shrink-0 text-[#12B981]" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
+              {inviteResult ? (
+                /* Success / link state */
+                <div className="space-y-4 mt-2">
+                  <div className={cn(
+                    'rounded-lg border p-3 space-y-2',
+                    inviteResult.emailSent
+                      ? 'bg-[#12B981]/8 border-[#12B981]/30'
+                      : 'bg-amber-500/10 border-amber-500/30'
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {inviteResult.emailSent
+                        ? <Check className="w-4 h-4 text-[#12B981]" />
+                        : <Mail className="w-4 h-4 text-amber-600" />}
+                      <p className="text-sm font-bold">
+                        {inviteResult.emailSent ? 'Convite enviado por email!' : 'Convite criado'}
+                      </p>
                     </div>
-                  )}
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <Button variant="outline" className="flex-1 text-sm" onClick={() => setInviteOpen(false)}>Cancelar</Button>
-                  <Button onClick={inviteUser} disabled={inviting || !inviteEmail} className="flex-1 text-white text-sm gap-1.5" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
-                    <Mail className="w-3.5 h-3.5" />{inviting ? 'Enviando…' : 'Enviar convite'}
+                    <p className="text-[11px] text-muted-foreground">
+                      {inviteResult.emailSent
+                        ? `Email enviado para ${inviteEmail}. O convidado tem 7 dias pra aceitar.`
+                        : `Email não foi enviado (configure SMTP em Integrações). Copie o link abaixo e envie manualmente.`}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Link de aceitação</Label>
+                    <div className="flex gap-2">
+                      <Input readOnly value={inviteResult.url} className="h-8 text-xs font-mono bg-muted" />
+                      <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1 shrink-0" onClick={() => { navigator.clipboard.writeText(inviteResult.url); toast.success('Link copiado!') }}>
+                        <Copy className="w-3 h-3" /> Copiar
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button onClick={closeInviteModal} className="w-full text-white text-sm" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                    Concluir
                   </Button>
                 </div>
-              </div>
+              ) : (
+                /* Invite form */
+                <div className="space-y-4 mt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Nome (opcional)</Label>
+                      <Input value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Maria Silva" className="h-9 text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Função (opcional)</Label>
+                      <Input value={inviteRole} onChange={e => setInviteRole(e.target.value)} placeholder="Vendedora SDR" className="h-9 text-sm" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">E-mail *</Label>
+                    <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="colaborador@email.com" type="email" className="h-9 text-sm" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Permissão</Label>
+                    <Select value={invitePermission} onValueChange={v => { if (v) setInvitePermission(v) }}>
+                      <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(PERMISSION_CONFIG).map(([v, cfg]) => (
+                          <SelectItem key={v} value={v}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: cfg.color }} />
+                              {cfg.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {PERMISSION_DESCRIPTIONS[invitePermission] && (
+                      <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PERMISSION_CONFIG[invitePermission]?.color }} />
+                          <p className="text-xs font-semibold">{PERMISSION_DESCRIPTIONS[invitePermission].title}</p>
+                        </div>
+                        <ul className="space-y-1">
+                          {PERMISSION_DESCRIPTIONS[invitePermission].items.map((item, i) => (
+                            <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                              <Check className="w-3 h-3 mt-0.5 shrink-0 text-[#12B981]" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" className="flex-1 text-sm" onClick={closeInviteModal}>Cancelar</Button>
+                    <Button onClick={inviteUser} disabled={inviting || !inviteEmail} className="flex-1 text-white text-sm gap-1.5" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                      <Mail className="w-3.5 h-3.5" />{inviting ? 'Enviando…' : 'Enviar convite'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
         </div>

@@ -3,11 +3,11 @@ import { sendMail } from '@/lib/email/sendMail'
 
 export async function POST(req: Request) {
   try {
-    const { to, subject, body, cc, bcc } = await req.json()
+    const { to, subject, body, cc, bcc, attachments } = await req.json()
     if (!to || !subject || !body) {
       return NextResponse.json({ error: 'to, subject e body são obrigatórios' }, { status: 400 })
     }
-    await sendMail({ to, subject, body, cc, bcc })
+    await sendMail({ to, subject, body, cc, bcc, attachments })
     return NextResponse.json({ ok: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'

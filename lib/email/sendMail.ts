@@ -1,12 +1,20 @@
 import nodemailer from 'nodemailer'
 import { createClient } from '@/lib/supabase/server'
 
+export type MailAttachment = {
+  filename: string
+  /** Base64-encoded file contents (without data URL prefix) */
+  content: string
+  contentType?: string
+}
+
 export type SendMailInput = {
   to: string
   subject: string
   body: string
   cc?: string
   bcc?: string
+  attachments?: MailAttachment[]
 }
 
 /**
@@ -15,7 +23,7 @@ export type SendMailInput = {
  *
  * Throws if no config is found or if sending fails.
  */
-export async function sendMail({ to, subject, body, cc, bcc }: SendMailInput) {
+export async function sendMail({ to, subject, body, cc, bcc, attachments }: SendMailInput) {
   const supabase = await createClient()
   const { data: settings, error: settingsErr } = await supabase
     .from('email_settings')
@@ -53,6 +61,13 @@ export async function sendMail({ to, subject, body, cc, bcc }: SendMailInput) {
     subject,
     text: body,
     html,
+    attachments: attachments?.length
+      ? attachments.map(a => ({
+          filename: a.filename,
+          content: Buffer.from(a.content, 'base64'),
+          contentType: a.contentType,
+        }))
+      : undefined,
   })
 }
 
