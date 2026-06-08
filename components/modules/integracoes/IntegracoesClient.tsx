@@ -637,7 +637,7 @@ function AIKeysPanel() {
   const [openaiKey, setOpenaiKey] = useState('')
   const [googleKey, setGoogleKey] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
-  const [testingAI, setTestingAI] = useState(false)
+  const [testingAI, setTestingAI] = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -666,20 +666,22 @@ function AIKeysPanel() {
     setSaving(null)
   }
 
-  const testAnthropic = async () => {
-    if (!anthropicKey) { toast.error('Salve a chave primeiro'); return }
-    setTestingAI(true)
+  const testProvider = async (provider: 'anthropic' | 'openai' | 'google', label: string) => {
+    setTestingAI(provider)
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: 'Responda apenas "ok"' }] }),
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Responda apenas "ok"' }],
+        preferProvider: provider,
+      }),
     })
-    if (res.ok) toast.success('Chave Anthropic OK!')
+    if (res.ok) toast.success(`Chave ${label} OK! Conexão funcionando.`)
     else {
       const body = await res.json().catch(() => ({}))
       toast.error(`Falhou: ${body.error ?? 'verifique a chave'}`)
     }
-    setTestingAI(false)
+    setTestingAI(null)
   }
 
   if (!loaded) {
@@ -702,7 +704,7 @@ function AIKeysPanel() {
       value: anthropicKey,
       setter: setAnthropicKey,
       testButton: true,
-      help: 'Recomendado. Modelo Claude Sonnet — qualidade superior em português. Crie a chave e dê crédito de pelo menos $5.',
+      help: 'Recomendado pela qualidade em português. Crie a chave e dê crédito de pelo menos $5. Modelo: Claude Sonnet 4.6.',
     },
     {
       name: 'OpenAI — ChatGPT',
@@ -714,7 +716,8 @@ function AIKeysPanel() {
       field: 'openai_api_key' as const,
       value: openaiKey,
       setter: setOpenaiKey,
-      help: 'Em breve — o CYCLO usa Anthropic por padrão. Salve a chave para uso futuro.',
+      testButton: true,
+      help: 'GPT-4o mini — rápido e barato. Crie a chave e adicione crédito na sua conta.',
     },
     {
       name: 'Google — Gemini',
@@ -726,7 +729,8 @@ function AIKeysPanel() {
       field: 'google_api_key' as const,
       value: googleKey,
       setter: setGoogleKey,
-      help: 'Em breve — chave grátis no Google AI Studio. Salve para uso futuro.',
+      testButton: true,
+      help: 'Gemini 1.5 Flash — chave grátis no Google AI Studio com limite generoso por minuto.',
     },
   ]
 
@@ -776,8 +780,8 @@ function AIKeysPanel() {
                 Obter sua chave em {p.link.replace('https://', '').split('/')[0]} <ExternalLink className="w-2.5 h-2.5" />
               </a>
               {p.testButton && p.value && (
-                <Button size="sm" variant="outline" onClick={testAnthropic} disabled={testingAI} className="h-7 text-[11px]">
-                  {testingAI ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                <Button size="sm" variant="outline" onClick={() => testProvider(p.field.replace('_api_key', '') as 'anthropic' | 'openai' | 'google', p.label)} disabled={!!testingAI} className="h-7 text-[11px]">
+                  {testingAI === p.field.replace('_api_key', '') ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                   Testar conexão
                 </Button>
               )}
