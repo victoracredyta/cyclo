@@ -185,6 +185,13 @@ export interface Database {
         from_name: string | null
         updated_at: string
       }>
+      ai_settings: TableDef<{
+        organization_id: string
+        anthropic_api_key: string | null
+        openai_api_key: string | null
+        google_api_key: string | null
+        updated_at: string
+      }>
       notification_prefs: TableDef<{
         user_id: string
         organization_id: string

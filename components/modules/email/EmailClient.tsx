@@ -171,7 +171,11 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
         }),
       })
 
-      if (!res.ok || !res.body) throw new Error('Falha')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Falha desconhecida')
+      }
+      if (!res.body) throw new Error('Resposta vazia')
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -183,8 +187,15 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
         improved += decoder.decode(value)
         setAiImprovedText(improved)
       }
-    } catch {
-      toast.error('Erro ao melhorar com IA. Verifique a chave API em Integrações.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+      toast.error(msg, {
+        action: {
+          label: 'Configurar',
+          onClick: () => { window.location.href = '/integracoes?tab=api' },
+        },
+        duration: 7000,
+      })
       setAiImproveOpen(false)
     } finally {
       setAiImproving(false)

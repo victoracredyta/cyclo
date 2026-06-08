@@ -210,45 +210,7 @@ document.addEventListener('wpcf7mailsent', function(event) {
       </div>
 
       {/* CYCLO IA — API Keys */}
-      {tab === 'api' && (
-        <div className="max-w-2xl space-y-6">
-          <div className="flex items-start gap-3 p-4 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-xl">
-            <Bot className="w-5 h-5 text-[#5B8CFF] mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-[#5B8CFF]">Como funciona o CYCLO IA</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                O CYCLO IA usa sua própria chave de API do provedor escolhido. Configure abaixo o modelo que prefere usar.
-              </p>
-            </div>
-          </div>
-
-          {[
-            { name: 'Anthropic — Claude', color: '#000', letter: 'A', placeholder: 'sk-ant-...', label: 'API Key (Anthropic)', link: 'https://console.anthropic.com' },
-            { name: 'OpenAI — ChatGPT', color: '#10a37f', letter: 'G', placeholder: 'sk-...', label: 'API Key (OpenAI)', link: 'https://platform.openai.com/api-keys' },
-            { name: 'Google — Gemini', color: '#4285F4', letter: 'G', placeholder: 'AIza...', label: 'API Key (Google AI)', link: 'https://aistudio.google.com/app/apikey' },
-          ].map(p => (
-            <Card key={p.name} className="border-border shadow-none">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <div className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ background: p.color }}>
-                    <span className="text-white text-[10px] font-bold">{p.letter}</span>
-                  </div>
-                  {p.name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <SecretField label={p.label} placeholder={p.placeholder} value="" />
-                <p className="text-xs text-muted-foreground">
-                  Obtenha sua chave em{' '}
-                  <a href={p.link} target="_blank" rel="noopener noreferrer" className="text-[#5B8CFF] hover:underline inline-flex items-center gap-0.5">
-                    {p.link.replace('https://', '')} <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {tab === 'api' && <AIKeysPanel />}
 
       {/* WordPress / Elementor */}
       {tab === 'wordpress' && (
@@ -665,6 +627,205 @@ function SmtpConfigCard() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// ─── AI Keys Panel ───────────────────────────────────────────
+function AIKeysPanel() {
+  const [loaded, setLoaded] = useState(false)
+  const [anthropicKey, setAnthropicKey] = useState('')
+  const [openaiKey, setOpenaiKey] = useState('')
+  const [googleKey, setGoogleKey] = useState('')
+  const [saving, setSaving] = useState<string | null>(null)
+  const [testingAI, setTestingAI] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('ai_settings').select('*').maybeSingle().then(({ data }) => {
+      if (data) {
+        setAnthropicKey(data.anthropic_api_key ?? '')
+        setOpenaiKey(data.openai_api_key ?? '')
+        setGoogleKey(data.google_api_key ?? '')
+      }
+      setLoaded(true)
+    })
+  }, [])
+
+  const saveKey = async (field: 'anthropic_api_key' | 'openai_api_key' | 'google_api_key', value: string, label: string) => {
+    setSaving(field)
+    const supabase = createClient()
+    const { data: me } = await supabase.from('users').select('organization_id').single()
+    if (!me?.organization_id) { toast.error('Org não encontrada'); setSaving(null); return }
+    const payload: Record<string, string | null> = {
+      organization_id: me.organization_id,
+      [field]: value || null,
+    }
+    const { error } = await supabase.from('ai_settings').upsert(payload as never, { onConflict: 'organization_id' })
+    if (error) toast.error(`Erro: ${error.message}`)
+    else toast.success(`Chave ${label} salva!`)
+    setSaving(null)
+  }
+
+  const testAnthropic = async () => {
+    if (!anthropicKey) { toast.error('Salve a chave primeiro'); return }
+    setTestingAI(true)
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'Responda apenas "ok"' }] }),
+    })
+    if (res.ok) toast.success('Chave Anthropic OK!')
+    else {
+      const body = await res.json().catch(() => ({}))
+      toast.error(`Falhou: ${body.error ?? 'verifique a chave'}`)
+    }
+    setTestingAI(false)
+  }
+
+  if (!loaded) {
+    return (
+      <div className="max-w-2xl text-center py-8 text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" /> Carregando configurações...
+      </div>
+    )
+  }
+
+  const providers = [
+    {
+      name: 'Anthropic — Claude',
+      color: '#000',
+      letter: 'A',
+      placeholder: 'sk-ant-api03-...',
+      label: 'Anthropic',
+      link: 'https://console.anthropic.com/settings/keys',
+      field: 'anthropic_api_key' as const,
+      value: anthropicKey,
+      setter: setAnthropicKey,
+      testButton: true,
+      help: 'Recomendado. Modelo Claude Sonnet — qualidade superior em português. Crie a chave e dê crédito de pelo menos $5.',
+    },
+    {
+      name: 'OpenAI — ChatGPT',
+      color: '#10a37f',
+      letter: 'G',
+      placeholder: 'sk-proj-...',
+      label: 'OpenAI',
+      link: 'https://platform.openai.com/api-keys',
+      field: 'openai_api_key' as const,
+      value: openaiKey,
+      setter: setOpenaiKey,
+      help: 'Em breve — o CYCLO usa Anthropic por padrão. Salve a chave para uso futuro.',
+    },
+    {
+      name: 'Google — Gemini',
+      color: '#4285F4',
+      letter: 'G',
+      placeholder: 'AIza...',
+      label: 'Google AI',
+      link: 'https://aistudio.google.com/app/apikey',
+      field: 'google_api_key' as const,
+      value: googleKey,
+      setter: setGoogleKey,
+      help: 'Em breve — chave grátis no Google AI Studio. Salve para uso futuro.',
+    },
+  ]
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      <div className="flex items-start gap-3 p-4 bg-[#5B8CFF]/5 border border-[#5B8CFF]/20 rounded-xl">
+        <Bot className="w-5 h-5 text-[#5B8CFF] mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-[#5B8CFF]">Como funciona o CYCLO IA</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            O CYCLO usa <strong>sua própria chave</strong> de API. Você paga direto ao provedor — sem markup nosso.
+            A chave fica salva criptografada no banco e nunca é compartilhada.
+            <strong> Recomendamos Anthropic (Claude)</strong> pela qualidade em português.
+          </p>
+        </div>
+      </div>
+
+      {providers.map(p => (
+        <Card key={p.name} className="border-border shadow-none">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ background: p.color }}>
+                  <span className="text-white text-[10px] font-bold">{p.letter}</span>
+                </div>
+                {p.name}
+              </div>
+              {p.value && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#12B981]/15 text-[#12B981]">
+                  <CheckCircle2 className="w-3 h-3 inline mr-1" /> Configurado
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <AIKeyField
+              label={`API Key (${p.label})`}
+              placeholder={p.placeholder}
+              value={p.value}
+              onChange={p.setter}
+              onSave={() => saveKey(p.field, p.value, p.label)}
+              saving={saving === p.field}
+            />
+            <p className="text-[11px] text-muted-foreground">{p.help}</p>
+            <div className="flex items-center justify-between">
+              <a href={p.link} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#5B8CFF] hover:underline inline-flex items-center gap-0.5">
+                Obter sua chave em {p.link.replace('https://', '').split('/')[0]} <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+              {p.testButton && p.value && (
+                <Button size="sm" variant="outline" onClick={testAnthropic} disabled={testingAI} className="h-7 text-[11px]">
+                  {testingAI ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                  Testar conexão
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+function AIKeyField({
+  label, value, onChange, onSave, saving, placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  onSave: () => void
+  saving: boolean
+  placeholder?: string
+}) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold">{label}</Label>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            type={show ? 'text' : 'password'}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder ?? 'Cole sua chave aqui'}
+            className="h-9 text-sm pr-9 font-mono"
+          />
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <Button size="sm" className="bg-[#5B8CFF] hover:bg-[#4a7aee] text-white text-xs h-9 px-4" onClick={onSave} disabled={saving}>
+          {saving && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+          Salvar
+        </Button>
+      </div>
+    </div>
   )
 }
 
