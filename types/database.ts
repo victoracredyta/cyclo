@@ -35,6 +35,7 @@ export interface Database {
         permission: string
         is_active: boolean
         onboarding_completed: boolean
+        email_signature: string | null
         created_at: string
       }>
       clients: TableDef<{

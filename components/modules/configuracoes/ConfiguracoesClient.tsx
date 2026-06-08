@@ -25,6 +25,7 @@ import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { AppUser } from '@/types/database'
 import { ColorPicker } from '@/components/common/ColorPicker'
+import { Textarea } from '@/components/ui/textarea'
 import { NotificationPrefsPanel } from './NotificationPrefsPanel'
 
 type OrgUser = {
@@ -162,6 +163,10 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [fullName, setFullName] = useState(appUser?.full_name ?? '')
   const [role, setRole] = useState(appUser?.role ?? '')
+  const [emailSignature, setEmailSignature] = useState<string>(
+    (appUser as { email_signature?: string | null } | null)?.email_signature ?? ''
+  )
+  const [savingSignature, setSavingSignature] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
@@ -436,6 +441,28 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     setSavingProfile(false)
   }
 
+  const saveSignature = async () => {
+    setSavingSignature(true)
+    const supabase = createClient()
+    const payload: Record<string, string | null> = { email_signature: emailSignature || null }
+    const { error } = await supabase.from('users').update(payload as never).eq('id', appUser?.id ?? '')
+    if (error) { toast.error(`Erro: ${error.message}`); setSavingSignature(false); return }
+    toast.success('Assinatura salva! Será adicionada automaticamente aos seus emails.')
+    setSavingSignature(false)
+  }
+
+  const insertSignaturePreset = (preset: 'simple' | 'pro' | 'minimal') => {
+    const name = fullName || 'Seu nome'
+    const roleTxt = role || 'Sua função'
+    const email = appUser?.email ?? 'seu@email.com'
+    const presets = {
+      simple: `${name}\n${roleTxt}\n${email}`,
+      pro: `Atenciosamente,\n\n${name}\n${roleTxt}\n📧 ${email}\n📱 (11) 99999-9999\n🌐 acredyta.com.br`,
+      minimal: `— ${name} · ${roleTxt}`,
+    }
+    setEmailSignature(presets[preset])
+  }
+
   const inviteUser = async () => {
     if (!inviteEmail.trim()) return
     setInviting(true)
@@ -525,7 +552,8 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
 
       {/* ─── PERFIL ─── */}
       {tab === 'perfil' && (
-        <div className="max-w-lg space-y-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="border-border shadow-none">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold">Informações pessoais</CardTitle>
@@ -583,7 +611,70 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
               </Button>
             </CardContent>
           </Card>
-          <Button variant="outline" className="w-full gap-2 text-sm text-red-500 hover:text-red-500 hover:bg-red-50 border-red-200" onClick={signOut}>
+
+          {/* ── Assinatura de email ── */}
+          <Card className="border-border shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-[#5B8CFF]" />
+                  Assinatura de e-mail
+                </div>
+                {emailSignature && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#12B981]/15 text-[#12B981]">
+                    ATIVA
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Assinatura adicionada automaticamente no fim de cada email que você enviar pelo CYCLO.
+              </p>
+
+              {/* Presets */}
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => insertSignaturePreset('minimal')} className="text-[10px] font-semibold px-2 py-1 rounded border border-border hover:border-[#5B8CFF]/40 hover:bg-[#5B8CFF]/5 transition-colors">
+                  Minimalista
+                </button>
+                <button type="button" onClick={() => insertSignaturePreset('simple')} className="text-[10px] font-semibold px-2 py-1 rounded border border-border hover:border-[#5B8CFF]/40 hover:bg-[#5B8CFF]/5 transition-colors">
+                  Simples
+                </button>
+                <button type="button" onClick={() => insertSignaturePreset('pro')} className="text-[10px] font-semibold px-2 py-1 rounded border border-border hover:border-[#5B8CFF]/40 hover:bg-[#5B8CFF]/5 transition-colors">
+                  Profissional
+                </button>
+                {emailSignature && (
+                  <button type="button" onClick={() => setEmailSignature('')} className="text-[10px] font-semibold px-2 py-1 rounded border border-border hover:border-red-500/40 hover:bg-red-50 hover:text-red-600 transition-colors ml-auto">
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              <Textarea
+                value={emailSignature}
+                onChange={e => setEmailSignature(e.target.value)}
+                placeholder="Atenciosamente,&#10;&#10;Victor Hugo&#10;Fundador · ACREDYTA&#10;📧 contato@acredyta.com.br&#10;📱 (11) 99999-9999"
+                className="min-h-[160px] text-sm font-mono resize-none"
+              />
+
+              {/* Preview */}
+              {emailSignature && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pré-visualização</p>
+                  <div className="border-t border-border pt-2 text-xs whitespace-pre-wrap leading-relaxed text-foreground/80">
+                    {emailSignature}
+                  </div>
+                </div>
+              )}
+
+              <Button onClick={saveSignature} disabled={savingSignature} className="text-white text-sm w-full" style={{ background: 'var(--brand-primary,#5B8CFF)' }}>
+                {savingSignature ? 'Salvando…' : 'Salvar assinatura'}
+              </Button>
+            </CardContent>
+          </Card>
+          </div>
+
+          <Button variant="outline" className="w-full max-w-lg gap-2 text-sm text-red-500 hover:text-red-500 hover:bg-red-50 border-red-200" onClick={signOut}>
             <LogOut className="w-4 h-4" /> Sair da conta
           </Button>
         </div>

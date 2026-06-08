@@ -26,6 +26,7 @@ interface Props {
   leads: Contact[]
   senderName: string
   senderEmail: string
+  senderSignature?: string
 }
 
 type EmailRecord = {
@@ -79,7 +80,7 @@ const DEFAULT_TEMPLATES: Template[] = [
   },
 ]
 
-export function EmailClient({ clients, leads, senderName, senderEmail }: Props) {
+export function EmailClient({ clients, leads, senderName, senderEmail, senderSignature = '' }: Props) {
   const [to, setTo] = useState('')
   const [toName, setToName] = useState('')
   const [subject, setSubject] = useState('')
@@ -87,6 +88,7 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
   const [sending, setSending] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; content: string; contentType: string; size: number }>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [useSignature, setUseSignature] = useState(!!senderSignature)
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -243,13 +245,18 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
     }
     setSending(true)
     try {
+      // Append signature if enabled and configured
+      const finalBody = useSignature && senderSignature
+        ? `${body.trimEnd()}\n\n${senderSignature}`
+        : body
+
       const res = await fetch('/api/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to,
           subject,
-          body,
+          body: finalBody,
           attachments: attachments.map(a => ({
             filename: a.filename,
             content: a.content,
@@ -382,16 +389,32 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-semibold">Mensagem</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+                  <button
+                    type="button"
                     onClick={improveWithAI}
                     disabled={!body || aiImproving}
+                    className={cn(
+                      'group relative inline-flex items-center gap-1.5 h-8 px-3 rounded-lg overflow-hidden text-xs font-bold text-white transition-all',
+                      'bg-gradient-to-r from-[#5B8CFF] via-[#8B5CF6] to-[#EC4899] bg-[length:200%_100%] bg-left',
+                      'hover:bg-right hover:shadow-lg hover:shadow-[#8B5CF6]/30',
+                      'disabled:opacity-50 disabled:cursor-not-allowed',
+                    )}
+                    style={{ transition: 'background-position 0.6s ease, box-shadow 0.3s ease' }}
                   >
-                    <Sparkles className="w-3 h-3" />
-                    Melhorar com CYCLO IA
-                  </Button>
+                    {/* Shimmer overlay */}
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"
+                    />
+                    {aiImproving ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin relative" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 relative group-hover:rotate-12 transition-transform" />
+                    )}
+                    <span className="relative">
+                      {aiImproving ? 'Melhorando...' : 'Melhorar com CYCLO IA'}
+                    </span>
+                  </button>
                 </div>
                 <Textarea
                   value={body}
@@ -401,6 +424,38 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
                   className="text-sm resize-none"
                 />
               </div>
+
+              {/* Signature toggle */}
+              {senderSignature && (
+                <div className="flex items-center justify-between gap-2 p-2.5 bg-muted/30 border border-border rounded-lg">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useSignature}
+                        onChange={e => setUseSignature(e.target.checked)}
+                        className="accent-[#5B8CFF] w-3.5 h-3.5"
+                      />
+                      <span className="text-xs font-semibold">Incluir assinatura automática</span>
+                    </label>
+                  </div>
+                  <details className="text-[10px] text-muted-foreground">
+                    <summary className="cursor-pointer hover:text-foreground">Pré-visualizar</summary>
+                    <div className="mt-1.5 pt-1.5 border-t border-border whitespace-pre-wrap font-mono text-foreground/70 max-w-[400px]">
+                      {senderSignature}
+                    </div>
+                  </details>
+                </div>
+              )}
+              {!senderSignature && (
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/configuracoes?tab=perfil' }}
+                  className="text-[11px] text-muted-foreground hover:text-[#5B8CFF] flex items-center gap-1 transition-colors"
+                >
+                  + Configurar uma assinatura automática em Configurações → Perfil
+                </button>
+              )}
 
               {/* Attachments list */}
               {attachments.length > 0 && (
