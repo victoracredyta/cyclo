@@ -258,9 +258,9 @@ export function EmailClient({ clients, leads, senderName, senderEmail }: Props) 
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Para</Label>
                 <div className="flex gap-2">
-                  <Select onValueChange={selectContact}>
+                  <Select value="" onValueChange={selectContact}>
                     <SelectTrigger className="h-9 text-sm flex-1">
-                      <SelectValue placeholder="Selecionar cliente ou lead..." />
+                      <span className="text-muted-foreground">Selecionar cliente ou lead...</span>
                     </SelectTrigger>
                     <SelectContent>
                       {clients.filter(c => c.email).length > 0 && (
