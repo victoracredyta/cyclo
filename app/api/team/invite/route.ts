@@ -6,6 +6,7 @@ const ROLE_LABELS: Record<string, string> = {
   Admin:        'Administrador',
   Gestor:       'Gestor',
   Vendedor:     'Vendedor',
+  Colaborador:  'Colaborador',
   Visualizador: 'Visualizador',
 }
 
@@ -30,6 +31,11 @@ export async function POST(req: Request) {
     const { email, full_name, role, permission } = await req.json()
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 })
+    }
+
+    // Only Admin can invite new Admins
+    if (permission === 'Admin' && me.permission !== 'Admin') {
+      return NextResponse.json({ error: 'Apenas Admins podem promover outros a Admin' }, { status: 403 })
     }
 
     // Check if email already belongs to another user in this org

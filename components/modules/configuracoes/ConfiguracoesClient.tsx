@@ -40,33 +40,62 @@ type OrgUser = {
 }
 
 const PERMISSION_CONFIG: Record<string, { label: string; color: string }> = {
-  Admin: { label: 'Admin', color: '#e1493c' },
-  Gerente: { label: 'Gerente', color: '#8B5CF6' },
-  'Social Media': { label: 'Social Media', color: '#5B8CFF' },
-  Atendimento: { label: 'Atendimento', color: '#12B981' },
+  Admin:        { label: 'Admin',        color: '#e1493c' },
+  Gestor:       { label: 'Gestor',       color: '#8B5CF6' },
+  Vendedor:     { label: 'Vendedor',     color: '#5B8CFF' },
+  Colaborador:  { label: 'Colaborador',  color: '#12B981' },
   Visualizador: { label: 'Visualizador', color: '#6B7280' },
 }
 
 const PERMISSION_DESCRIPTIONS: Record<string, { title: string; items: string[] }> = {
   Admin: {
     title: 'Acesso total ao sistema',
-    items: ['Gerencia toda a equipe e permissões', 'Acesso a todos os funis e leads', 'Configura integrações, white label e planos', 'Visualiza todos os relatórios e financeiro'],
+    items: [
+      'Convida e remove membros, define permissões',
+      'Acessa todos os funis, clientes e leads',
+      'Configura integrações, white label, SMTP e IA',
+      'Visualiza relatórios, metas e financeiro',
+      'Exclui registros e gerencia o plano',
+    ],
   },
-  Gerente: {
+  Gestor: {
     title: 'Gestão de equipe e comercial',
-    items: ['Gerencia vendedores e distribui leads', 'Acessa todos os funis sob sua responsabilidade', 'Visualiza relatórios de performance da equipe', 'Não acessa configurações administrativas'],
+    items: [
+      'Acessa todos os funis, leads e clientes',
+      'Distribui leads entre vendedores',
+      'Visualiza relatórios da equipe',
+      'Convida novos membros (não Admin)',
+      'Sem acesso a billing, white label ou integrações',
+    ],
   },
-  'Social Media': {
-    title: 'Conteúdo e aprovações',
-    items: ['Cria e gerencia conteúdos para aprovação', 'Visualiza leads atribuídos a si', 'Acessa o portal de aprovações dos clientes', 'Sem acesso a financeiro ou permissões'],
+  Vendedor: {
+    title: 'Comercial — foco em vendas',
+    items: [
+      'Trabalha o pipeline e CRM dos seus próprios leads',
+      'Cria, edita e move leads/clientes',
+      'Envia e-mails e registra atividades',
+      'Visualiza apenas leads dos funis em que está atribuído',
+      'Não convida membros nem mexe em configurações',
+    ],
   },
-  Atendimento: {
-    title: 'Relacionamento com clientes',
-    items: ['Visualiza e atualiza leads atribuídos a si', 'Registra atividades e histórico de contato', 'Acessa agenda e tarefas próprias', 'Sem acesso a configurações ou relatórios gerais'],
+  Colaborador: {
+    title: 'Operacional — suporte aos times',
+    items: [
+      'Acessa leads e clientes atribuídos a si',
+      'Registra atividades, notas e arquivos',
+      'Sem permissão pra excluir registros',
+      'Não vê relatórios financeiros',
+      'Ideal pra assistentes, SDRs, suporte',
+    ],
   },
   Visualizador: {
     title: 'Somente leitura',
-    items: ['Visualiza leads, pipeline e relatórios', 'Não pode editar ou criar registros', 'Ideal para diretores ou sócios observadores', 'Sem acesso a configurações'],
+    items: [
+      'Visualiza pipeline, leads, clientes e relatórios',
+      'Não pode criar, editar ou excluir nada',
+      'Ideal para sócios, diretores e auditores',
+      'Não acessa configurações administrativas',
+    ],
   },
 }
 
@@ -534,6 +563,18 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     toast.success(!current ? 'Usuário ativado' : 'Usuário desativado')
   }
 
+  const changeUserPermission = async (userId: string, newPermission: string) => {
+    if (appUser?.permission !== 'Admin') {
+      toast.error('Apenas Admins podem alterar permissões')
+      return
+    }
+    const supabase = createClient()
+    const { error } = await supabase.from('users').update({ permission: newPermission }).eq('id', userId)
+    if (error) { toast.error(`Erro: ${error.message}`); return }
+    setOrgUsers(prev => prev.map(u => u.id === userId ? { ...u, permission: newPermission } : u))
+    toast.success('Permissão atualizada')
+  }
+
   const signOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -787,7 +828,25 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground truncate">{u.role ?? '—'}</span>
-                  <Badge className="text-[10px] border-0 w-fit" style={{ backgroundColor: `${permCfg.color}15`, color: permCfg.color }}>{permCfg.label}</Badge>
+                  {appUser?.permission === 'Admin' && !isMe ? (
+                    <Select value={u.permission} onValueChange={v => v && changeUserPermission(u.id, v)}>
+                      <SelectTrigger className="h-7 text-[11px] w-fit min-w-[120px] gap-1">
+                        <span className="font-semibold" style={{ color: permCfg.color }}>{permCfg.label}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(PERMISSION_CONFIG).map(([val, cfg]) => (
+                          <SelectItem key={val} value={val}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: cfg.color }} />
+                              <span style={{ color: cfg.color }}>{cfg.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Badge className="text-[10px] border-0 w-fit" style={{ backgroundColor: `${permCfg.color}15`, color: permCfg.color }}>{permCfg.label}</Badge>
+                  )}
                   <div className="flex items-center justify-end gap-2">
                     {isMe ? (
                       <Badge className="text-[10px] bg-[#12B981]/10 text-[#12B981] border-0">Você</Badge>
