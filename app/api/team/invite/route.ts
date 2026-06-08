@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     }
 
     // Try to send invite email — if SMTP not configured, return invite link anyway
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://cyclo-beta.vercel.app'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://cyclo.acredyta.com.br'
     const acceptUrl = `${baseUrl}/accept-invite/${invite.token}`
     const fromName = me.full_name?.trim() || 'Sua equipe'
     const permLabel = ROLE_LABELS[invite.permission] ?? invite.permission

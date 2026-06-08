@@ -120,7 +120,7 @@ export function IntegracoesClient({ orgId, orgSlug }: Props) {
       setGmailError('Não foi possível conectar o Gmail. Tente novamente.')
     }
   }, [])
-  const webhookUrl = `https://cyclo-beta.vercel.app/api/leads/capture/${orgSlug || orgId}`
+  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://cyclo.acredyta.com.br'}/api/leads/capture/${orgSlug || orgId}`
 
   // Elementor snippet that captures form submissions
   const elementorSnippet = `<script>

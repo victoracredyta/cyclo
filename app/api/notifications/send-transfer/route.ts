@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 
     const subject = render(subjectTpl, vars)
     const baseBody = render(bodyTpl, vars)
-    const linkUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://cyclo-beta.vercel.app'}/pipeline/${leadId}`
+    const linkUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://cyclo.acredyta.com.br'}/pipeline/${leadId}`
     const body = `Olá ${target.full_name ?? ''},\n\n${baseBody}\n\nAcessar oportunidade:\n${linkUrl}\n\n— CYCLO`
 
     await sendMail({ to, subject, body })
