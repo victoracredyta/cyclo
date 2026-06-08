@@ -27,6 +27,7 @@ interface Props {
   senderName: string
   senderEmail: string
   senderSignature?: string
+  senderSignatureImage?: string
 }
 
 type EmailRecord = {
@@ -80,15 +81,15 @@ const DEFAULT_TEMPLATES: Template[] = [
   },
 ]
 
-export function EmailClient({ clients, leads, senderName, senderEmail, senderSignature = '' }: Props) {
+export function EmailClient({ clients, leads, senderName, senderEmail, senderSignature = '', senderSignatureImage = '' }: Props) {
   const [to, setTo] = useState('')
   const [toName, setToName] = useState('')
   const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
+  const [body, setBody] = useState(() => senderSignature ? `\n\n\n--\n${senderSignature}` : '')
   const [sending, setSending] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; content: string; contentType: string; size: number }>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [useSignature, setUseSignature] = useState(!!senderSignature)
+  const [useSignature, setUseSignature] = useState(!!senderSignature || !!senderSignatureImage)
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -245,10 +246,16 @@ export function EmailClient({ clients, leads, senderName, senderEmail, senderSig
     }
     setSending(true)
     try {
-      // Append signature if enabled and configured
-      const finalBody = useSignature && senderSignature
-        ? `${body.trimEnd()}\n\n${senderSignature}`
-        : body
+      // The body already contains the signature text (pre-filled on mount).
+      // If user turned off signature, strip everything after the "--" separator.
+      let finalBody = body
+      if (!useSignature) {
+        const sigIdx = finalBody.lastIndexOf('\n--\n')
+        if (sigIdx > -1) finalBody = finalBody.slice(0, sigIdx).trimEnd()
+      }
+
+      // Build HTML if signature image is present and enabled
+      const signatureImage = useSignature && senderSignatureImage ? senderSignatureImage : null
 
       const res = await fetch('/api/email/send', {
         method: 'POST',
@@ -257,6 +264,7 @@ export function EmailClient({ clients, leads, senderName, senderEmail, senderSig
           to,
           subject,
           body: finalBody,
+          signatureImage,
           attachments: attachments.map(a => ({
             filename: a.filename,
             content: a.content,
@@ -280,7 +288,7 @@ export function EmailClient({ clients, leads, senderName, senderEmail, senderSig
       }
       setHistory(prev => [record, ...prev])
       toast.success(`Email enviado para ${toName || to}!${attachments.length ? ` Com ${attachments.length} anexo(s).` : ''}`)
-      setBody('')
+      setBody(senderSignature ? `\n\n\n--\n${senderSignature}` : '')
       setSubject('')
       setTo('')
       setToName('')
@@ -420,9 +428,17 @@ export function EmailClient({ clients, leads, senderName, senderEmail, senderSig
                   value={body}
                   onChange={e => setBody(e.target.value)}
                   placeholder="Escreva sua mensagem aqui..."
-                  rows={10}
-                  className="text-sm resize-none"
+                  rows={12}
+                  className="text-sm resize-none font-sans"
                 />
+
+                {/* Signature image preview — shown directly below textarea, simulates Gmail/Outlook signature */}
+                {useSignature && senderSignatureImage && (
+                  <div className="mt-2 pl-3 border-l-2 border-[#5B8CFF]/30">
+                    <p className="text-[10px] text-muted-foreground mb-1">Imagem da assinatura (aparece no email enviado)</p>
+                    <img src={senderSignatureImage} alt="Assinatura" className="max-h-20 object-contain" />
+                  </div>
+                )}
               </div>
 
               {/* Signature toggle */}

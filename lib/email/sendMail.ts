@@ -15,6 +15,8 @@ export type SendMailInput = {
   cc?: string
   bcc?: string
   attachments?: MailAttachment[]
+  /** URL of an image to inline below the body (e.g. signature logo/banner) */
+  signatureImage?: string | null
 }
 
 /**
@@ -23,7 +25,7 @@ export type SendMailInput = {
  *
  * Throws if no config is found or if sending fails.
  */
-export async function sendMail({ to, subject, body, cc, bcc, attachments }: SendMailInput) {
+export async function sendMail({ to, subject, body, cc, bcc, attachments, signatureImage }: SendMailInput) {
   const supabase = await createClient()
   const { data: settings, error: settingsErr } = await supabase
     .from('email_settings')
@@ -47,11 +49,17 @@ export async function sendMail({ to, subject, body, cc, bcc, attachments }: Send
   const from = `"${fromName}" <${settings.smtp_user}>`
 
   // Render simple HTML from plain-text body (preserve line breaks)
-  const html = `<div style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937;">${body
+  const escapedBody = body
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br />')}</div>`
+    .replace(/\n/g, '<br />')
+
+  const imageHtml = signatureImage
+    ? `<div style="margin-top: 16px;"><img src="${signatureImage}" alt="" style="max-height: 100px; max-width: 320px; display: block;" /></div>`
+    : ''
+
+  const html = `<div style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937;">${escapedBody}${imageHtml}</div>`
 
   await transporter.sendMail({
     from,

@@ -36,6 +36,7 @@ export interface Database {
         is_active: boolean
         onboarding_completed: boolean
         email_signature: string | null
+        email_signature_image: string | null
         created_at: string
       }>
       clients: TableDef<{

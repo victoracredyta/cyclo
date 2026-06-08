@@ -166,6 +166,11 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [emailSignature, setEmailSignature] = useState<string>(
     (appUser as { email_signature?: string | null } | null)?.email_signature ?? ''
   )
+  const [signatureImage, setSignatureImage] = useState<string>(
+    (appUser as { email_signature_image?: string | null } | null)?.email_signature_image ?? ''
+  )
+  const [uploadingSigImage, setUploadingSigImage] = useState(false)
+  const sigImageInputRef = useRef<HTMLInputElement>(null)
   const [savingSignature, setSavingSignature] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -444,11 +449,31 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const saveSignature = async () => {
     setSavingSignature(true)
     const supabase = createClient()
-    const payload: Record<string, string | null> = { email_signature: emailSignature || null }
+    const payload: Record<string, string | null> = {
+      email_signature: emailSignature || null,
+      email_signature_image: signatureImage || null,
+    }
     const { error } = await supabase.from('users').update(payload as never).eq('id', appUser?.id ?? '')
     if (error) { toast.error(`Erro: ${error.message}`); setSavingSignature(false); return }
     toast.success('Assinatura salva! Será adicionada automaticamente aos seus emails.')
     setSavingSignature(false)
+  }
+
+  const uploadSignatureImage = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) { toast.error('Imagem muito grande. Máx 2MB.'); return }
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    if (!allowed.includes(file.type)) { toast.error('Use PNG, JPEG ou WEBP'); return }
+    setUploadingSigImage(true)
+    const supabase = createClient()
+    const ext = (file.name.split('.').pop() ?? 'png').toLowerCase()
+    const path = `${appUser?.id ?? 'me'}/signature-${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage.from('signatures').upload(path, file, { upsert: true, contentType: file.type })
+    if (upErr) { toast.error(`Erro no upload: ${upErr.message}`); setUploadingSigImage(false); return }
+    const { data: urlData } = supabase.storage.from('signatures').getPublicUrl(path)
+    const url = `${urlData.publicUrl}?t=${Date.now()}`
+    setSignatureImage(url)
+    setUploadingSigImage(false)
+    toast.success('Imagem carregada!')
   }
 
   const insertSignaturePreset = (preset: 'simple' | 'pro' | 'minimal') => {
@@ -657,12 +682,65 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                 className="min-h-[160px] text-sm font-mono resize-none"
               />
 
-              {/* Preview */}
-              {emailSignature && (
-                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pré-visualização</p>
-                  <div className="border-t border-border pt-2 text-xs whitespace-pre-wrap leading-relaxed text-foreground/80">
-                    {emailSignature}
+              {/* Imagem da assinatura (logo / banner) */}
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Imagem (logo / banner)</Label>
+                <input
+                  ref={sigImageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadSignatureImage(f); if (sigImageInputRef.current) sigImageInputRef.current.value = '' }}
+                />
+                {signatureImage ? (
+                  <div className="flex items-center gap-2 p-2 border border-border rounded-lg bg-muted/20">
+                    <img src={signatureImage} alt="Assinatura" className="h-12 max-w-[140px] object-contain rounded" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-muted-foreground">Imagem carregada</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => sigImageInputRef.current?.click()}
+                      className="text-[11px] px-2 py-1 rounded border border-border hover:border-[#5B8CFF]/40 transition-colors"
+                    >
+                      Trocar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSignatureImage('')}
+                      className="text-[11px] px-2 py-1 rounded border border-border hover:border-red-500/40 hover:text-red-600 transition-colors"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => sigImageInputRef.current?.click()}
+                    disabled={uploadingSigImage}
+                    className="w-full border-2 border-dashed border-border rounded-lg py-4 px-3 text-center text-xs text-muted-foreground hover:border-[#5B8CFF]/40 hover:bg-[#5B8CFF]/5 transition-colors flex flex-col items-center gap-1"
+                  >
+                    {uploadingSigImage
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Carregando…</>
+                      : <><Camera className="w-4 h-4" /> Adicionar logo ou banner (PNG/JPG, máx 2MB)</>
+                    }
+                  </button>
+                )}
+              </div>
+
+              {/* Preview HTML completo */}
+              {(emailSignature || signatureImage) && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pré-visualização no email</p>
+                  <div className="border-t border-border pt-2 space-y-2">
+                    {emailSignature && (
+                      <div className="text-xs whitespace-pre-wrap leading-relaxed text-foreground/80 font-sans">
+                        {emailSignature}
+                      </div>
+                    )}
+                    {signatureImage && (
+                      <img src={signatureImage} alt="" className="max-h-20 object-contain" />
+                    )}
                   </div>
                 </div>
               )}
