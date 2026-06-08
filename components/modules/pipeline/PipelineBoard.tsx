@@ -28,7 +28,7 @@ import Link from 'next/link'
 
 const LOCAL_TAGS_KEY = 'cyclo_lead_tags'
 
-type DBFunnel = { id: string; name: string; description: string | null; is_default: boolean; created_at: string }
+type DBFunnel = { id: string; name: string; description: string | null; is_default: boolean; created_at: string; has_access?: boolean }
 
 export type LeadWithResponsible = Lead & {
   responsible: { id: string; full_name: string | null; avatar_url: string | null } | null
@@ -193,6 +193,14 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
     const overId = String(over.id)
     const lead = leads.find(l => l.id === leadId)
     if (!lead) return
+
+    // Guard: user must have access to the lead's funnel
+    const leadFunnel = funnels.find(f => f.id === (lead as { funnel_id?: string | null }).funnel_id)
+    if (leadFunnel && leadFunnel.has_access === false) {
+      toast.error(`Sem acesso ao funil "${leadFunnel.name}". Peça permissão a um Admin.`)
+      return
+    }
+
     let targetStageId: string | null = null
     if (stages.find(s => s.id === overId)) {
       targetStageId = overId
@@ -240,6 +248,10 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
   }
 
   const selectedFunnel = funnels.find(f => f.id === selectedFunnelId)
+  // User has write access if "Todos os funis" is selected OR the specific funnel grants access
+  const hasWriteAccess = selectedFunnelId === 'all'
+    ? funnels.some(f => f.has_access !== false)
+    : (selectedFunnel?.has_access ?? true)
 
   // Stats for the header strip
   const wonCount = leads.filter(l => l.won_at && (selectedFunnelId === 'all' || visibleStages.some(s => s.id === l.stage_id))).length
@@ -292,6 +304,11 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
                       {selectedFunnelId === f.id ? <Check className="w-3 h-3 text-[#5B8CFF] shrink-0" /> : <span className="w-3 shrink-0" />}
                       <span className="truncate flex-1">{f.name}</span>
                       {f.is_default && <span className="text-[9px] text-[#12B981] font-bold shrink-0 px-1 py-0.5 rounded bg-[#12B981]/10">PADRÃO</span>}
+                      {f.has_access === false && (
+                        <span className="text-[9px] text-muted-foreground font-bold shrink-0 px-1 py-0.5 rounded bg-muted/50" title="Você só pode ver — sem permissão para editar">
+                          🔒 SEM ACESSO
+                        </span>
+                      )}
                     </button>
                   ))}
                   <div className="border-t border-border mt-1 pt-1">
@@ -410,9 +427,11 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
               )}
             </Button>
             <Button
-              size="sm" className="text-white gap-1.5 text-xs h-9 shadow-md"
+              size="sm" className="text-white gap-1.5 text-xs h-9 shadow-md disabled:opacity-50"
               style={{ background: 'var(--brand-primary,#5B8CFF)' }}
               onClick={() => { setDefaultStageId(visibleStages[0]?.id ?? stages[0]?.id); setShowNewLead(true) }}
+              disabled={!hasWriteAccess}
+              title={hasWriteAccess ? 'Criar novo lead' : 'Sem acesso a este funil. Peça permissão a um Admin.'}
             >
               <Plus className="w-3.5 h-3.5" /> Novo lead
             </Button>
@@ -572,6 +591,21 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
         )}
       </AnimatePresence>
 
+      {/* Sem acesso banner */}
+      {selectedFunnelId !== 'all' && selectedFunnel && selectedFunnel.has_access === false && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/8 px-4 py-3 flex items-center gap-3">
+          <span className="text-lg">🔒</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-700 dark:text-amber-400">
+              Você está só visualizando este funil
+            </p>
+            <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">
+              Sem permissão para ver oportunidades ou movimentar cards neste pipeline. Peça acesso ao Admin em <strong>Configurações → Funis</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Kanban board */}
       <div className="flex-1 overflow-x-auto">
         <DndContext
@@ -582,16 +616,27 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
           onDragOver={handleDragOver}
         >
           <div className="flex gap-3 h-full pb-4 min-w-max">
-            {visibleStages.map(stage => (
-              <PipelineColumn
-                key={stage.id}
-                stage={stage}
-                leads={leadsByStage[stage.id] ?? []}
-                onAddLead={() => { setDefaultStageId(stage.id); setShowNewLead(true) }}
-                availableTags={availableTags}
-                onTagChange={handleTagChange}
-              />
-            ))}
+            {visibleStages.map(stage => {
+              const stageFunnel = funnels.find(f => f.id === (stage as { funnel_id?: string | null }).funnel_id)
+              const stageHasAccess = !stageFunnel || stageFunnel.has_access !== false
+              return (
+                <PipelineColumn
+                  key={stage.id}
+                  stage={stage}
+                  leads={leadsByStage[stage.id] ?? []}
+                  onAddLead={() => {
+                    if (!stageHasAccess) {
+                      toast.error(`Sem acesso ao funil "${stageFunnel?.name ?? ''}". Peça permissão a um Admin.`)
+                      return
+                    }
+                    setDefaultStageId(stage.id)
+                    setShowNewLead(true)
+                  }}
+                  availableTags={availableTags}
+                  onTagChange={handleTagChange}
+                />
+              )
+            })}
           </div>
 
           <DragOverlay>
