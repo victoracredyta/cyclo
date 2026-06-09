@@ -55,9 +55,14 @@ export async function sendMail({ to, subject, body, cc, bcc, attachments, signat
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br />')
 
-  const imageHtml = signatureImage
-    ? `<div style="margin-top: 16px;"><img src="${signatureImage}" alt="" style="max-height: 100px; max-width: 320px; display: block;" /></div>`
-    : ''
+  // Parse #w=N from signature URL to determine display width
+  let imageHtml = ''
+  if (signatureImage) {
+    const [cleanSrc, hash] = signatureImage.split('#')
+    const widthMatch = hash?.match(/w=(\d+)/)
+    const width = widthMatch ? Math.min(400, Math.max(80, parseInt(widthMatch[1]))) : 200
+    imageHtml = `<div style="margin-top: 16px;"><img src="${cleanSrc}" alt="" width="${width}" style="width: ${width}px; max-width: 100%; height: auto; display: block;" /></div>`
+  }
 
   const html = `<div style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937;">${escapedBody}${imageHtml}</div>`
 

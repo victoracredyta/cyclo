@@ -432,13 +432,18 @@ export function EmailClient({ clients, leads, senderName, senderEmail, senderSig
                   className="text-sm resize-none font-sans"
                 />
 
-                {/* Signature image preview — shown directly below textarea, simulates Gmail/Outlook signature */}
-                {useSignature && senderSignatureImage && (
-                  <div className="mt-2 pl-3 border-l-2 border-[#5B8CFF]/30">
-                    <p className="text-[10px] text-muted-foreground mb-1">Imagem da assinatura (aparece no email enviado)</p>
-                    <img src={senderSignatureImage} alt="Assinatura" className="max-h-20 object-contain" />
-                  </div>
-                )}
+                {/* Signature image preview — parses #w=N from URL to render at saved width */}
+                {useSignature && senderSignatureImage && (() => {
+                  const [imgSrc, hash] = senderSignatureImage.split('#')
+                  const widthMatch = hash?.match(/w=(\d+)/)
+                  const width = widthMatch ? Math.min(400, Math.max(80, parseInt(widthMatch[1]))) : 200
+                  return (
+                    <div className="mt-2 pl-3 border-l-2 border-[#5B8CFF]/30">
+                      <p className="text-[10px] text-muted-foreground mb-1">Imagem da assinatura ({width}px — aparece no email enviado)</p>
+                      <img src={imgSrc} alt="Assinatura" style={{ width, maxWidth: '100%', height: 'auto' }} />
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Signature toggle */}

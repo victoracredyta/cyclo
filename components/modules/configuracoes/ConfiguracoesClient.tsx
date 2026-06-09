@@ -195,9 +195,15 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const [emailSignature, setEmailSignature] = useState<string>(
     (appUser as { email_signature?: string | null } | null)?.email_signature ?? ''
   )
-  const [signatureImage, setSignatureImage] = useState<string>(
-    (appUser as { email_signature_image?: string | null } | null)?.email_signature_image ?? ''
-  )
+  // Signature image URL stores the size as a #w=N hash suffix (client-only, not sent on fetch)
+  const initialSigImg = (appUser as { email_signature_image?: string | null } | null)?.email_signature_image ?? ''
+  const initialSigImgSrc = initialSigImg.split('#')[0]
+  const initialSigImgWidth = (() => {
+    const m = initialSigImg.match(/#w=(\d+)/)
+    return m ? Math.min(400, Math.max(80, parseInt(m[1]))) : 200
+  })()
+  const [signatureImage, setSignatureImage] = useState<string>(initialSigImgSrc)
+  const [signatureImageWidth, setSignatureImageWidth] = useState<number>(initialSigImgWidth)
   const [uploadingSigImage, setUploadingSigImage] = useState(false)
   const sigImageInputRef = useRef<HTMLInputElement>(null)
   const [savingSignature, setSavingSignature] = useState(false)
@@ -477,15 +483,27 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
 
   const saveSignature = async () => {
     setSavingSignature(true)
-    const supabase = createClient()
-    const payload: Record<string, string | null> = {
-      email_signature: emailSignature || null,
-      email_signature_image: signatureImage || null,
+    try {
+      // Pack image with size hash (kept client-side, browsers don't send hash on fetch)
+      const imageWithSize = signatureImage
+        ? `${signatureImage.split('#')[0]}#w=${signatureImageWidth}`
+        : null
+      const res = await fetch('/api/me/update-signature', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signature: emailSignature || null,
+          signatureImage: imageWithSize,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'Falha ao salvar')
+      toast.success(`Assinatura salva! (${body.saved_text_length} caracteres${body.saved_image ? ' + imagem' : ''})`)
+    } catch (err) {
+      toast.error(`Erro: ${err instanceof Error ? err.message : 'desconhecido'}`)
+    } finally {
+      setSavingSignature(false)
     }
-    const { error } = await supabase.from('users').update(payload as never).eq('id', appUser?.id ?? '')
-    if (error) { toast.error(`Erro: ${error.message}`); setSavingSignature(false); return }
-    toast.success('Assinatura salva! Será adicionada automaticamente aos seus emails.')
-    setSavingSignature(false)
   }
 
   const uploadSignatureImage = async (file: File) => {
@@ -734,25 +752,70 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                   onChange={e => { const f = e.target.files?.[0]; if (f) uploadSignatureImage(f); if (sigImageInputRef.current) sigImageInputRef.current.value = '' }}
                 />
                 {signatureImage ? (
-                  <div className="flex items-center gap-2 p-2 border border-border rounded-lg bg-muted/20">
-                    <img src={signatureImage} alt="Assinatura" className="h-12 max-w-[140px] object-contain rounded" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[11px] text-muted-foreground">Imagem carregada</p>
+                  <div className="space-y-2 p-2 border border-border rounded-lg bg-muted/20">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={signatureImage}
+                        alt="Assinatura"
+                        style={{ width: signatureImageWidth, maxWidth: '100%', height: 'auto' }}
+                        className="object-contain rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] text-muted-foreground">{signatureImageWidth}px de largura</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => sigImageInputRef.current?.click()}
+                        className="text-[11px] px-2 py-1 rounded border border-border hover:border-[#5B8CFF]/40 transition-colors"
+                      >
+                        Trocar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setSignatureImage(''); setSignatureImageWidth(200) }}
+                        className="text-[11px] px-2 py-1 rounded border border-border hover:border-red-500/40 hover:text-red-600 transition-colors"
+                      >
+                        Remover
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => sigImageInputRef.current?.click()}
-                      className="text-[11px] px-2 py-1 rounded border border-border hover:border-[#5B8CFF]/40 transition-colors"
-                    >
-                      Trocar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSignatureImage('')}
-                      className="text-[11px] px-2 py-1 rounded border border-border hover:border-red-500/40 hover:text-red-600 transition-colors"
-                    >
-                      Remover
-                    </button>
+
+                    {/* Size slider */}
+                    <div className="flex items-center gap-2 px-1 pt-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold shrink-0">Tamanho</Label>
+                      <input
+                        type="range"
+                        min={80}
+                        max={400}
+                        step={10}
+                        value={signatureImageWidth}
+                        onChange={e => setSignatureImageWidth(Number(e.target.value))}
+                        className="flex-1 accent-[#5B8CFF]"
+                      />
+                      <span className="text-[10px] font-mono w-12 text-right text-muted-foreground">{signatureImageWidth}px</span>
+                    </div>
+
+                    {/* Preset shortcuts */}
+                    <div className="flex gap-1.5 px-1">
+                      {[
+                        { label: 'P', value: 120 },
+                        { label: 'M', value: 200 },
+                        { label: 'G', value: 320 },
+                      ].map(p => (
+                        <button
+                          key={p.value}
+                          type="button"
+                          onClick={() => setSignatureImageWidth(p.value)}
+                          className={cn(
+                            'text-[10px] font-bold px-2 py-0.5 rounded border transition-colors',
+                            signatureImageWidth === p.value
+                              ? 'border-[#5B8CFF] bg-[#5B8CFF]/10 text-[#5B8CFF]'
+                              : 'border-border text-muted-foreground hover:border-muted-foreground/40'
+                          )}
+                        >
+                          {p.label} ({p.value}px)
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <button

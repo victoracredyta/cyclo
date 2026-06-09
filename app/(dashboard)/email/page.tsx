@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { EmailClient } from '@/components/modules/email/EmailClient'
 
+export const dynamic = 'force-dynamic'
+
 export default async function EmailPage() {
   const supabase = await createClient()
 
