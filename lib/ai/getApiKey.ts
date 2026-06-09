@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 
 export type AIProvider = 'anthropic' | 'openai' | 'google'
 
@@ -28,30 +29,61 @@ const LABEL: Record<AIProvider, string> = {
 
 /**
  * Resolves the API key to use for AI calls.
- * Priority:
- *   1. The org's saved key for the requested provider (or first available)
- *   2. The platform env var fallback
  *
- * If `preferred` is omitted, tries providers in this order: anthropic → openai → google.
+ * Robust strategy:
+ *   1. Get the authenticated user's organization_id from the server session
+ *   2. Look up ai_settings using service role (bypasses RLS — works even if
+ *      get_my_org_id() Postgres helper is missing or returning null)
+ *   3. Try preferred provider, then fall back through the priority chain
+ *   4. Finally try env vars
  */
 export async function resolveAIKey(preferred?: AIProvider): Promise<ResolvedKey> {
-  const supabase = await createClient()
-  const { data: settings } = await supabase
-    .from('ai_settings')
-    .select('anthropic_api_key, openai_api_key, google_api_key')
+  // 1. Authenticated context for the user
+  const serverClient = await createServerClient()
+  const { data: { user } } = await serverClient.auth.getUser()
+  if (!user) {
+    throw new Error('Usuário não autenticado. Faça login novamente.')
+  }
+
+  // 2. Get the user's organization_id (RLS-protected on users table — should work)
+  const { data: me } = await serverClient
+    .from('users')
+    .select('organization_id')
+    .eq('id', user.id)
     .maybeSingle()
+
+  if (!me?.organization_id) {
+    throw new Error('Sua conta não está vinculada a uma organização. Contate o suporte.')
+  }
 
   const order: AIProvider[] = preferred
     ? [preferred, ...(['anthropic', 'openai', 'google'] as AIProvider[]).filter(p => p !== preferred)]
     : ['anthropic', 'openai', 'google']
 
-  // 1. Try org keys in priority order
-  for (const provider of order) {
-    const key = settings?.[FIELD[provider]]?.trim()
-    if (key) return { provider, key, source: 'org' }
+  // 3. Look up ai_settings using service role to bypass RLS issues
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+  if (supabaseUrl && serviceKey) {
+    const admin = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+
+    const { data: settings } = await admin
+      .from('ai_settings')
+      .select('anthropic_api_key, openai_api_key, google_api_key')
+      .eq('organization_id', me.organization_id)
+      .maybeSingle()
+
+    if (settings) {
+      for (const provider of order) {
+        const key = settings[FIELD[provider]]?.trim()
+        if (key) return { provider, key, source: 'org' }
+      }
+    }
   }
 
-  // 2. Try env vars in priority order
+  // 4. Fallback to env vars (platform-wide demo key)
   for (const provider of order) {
     const key = process.env[ENV_VAR[provider]]?.trim()
     if (key) return { provider, key, source: 'env' }
