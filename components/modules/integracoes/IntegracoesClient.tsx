@@ -652,18 +652,32 @@ function AIKeysPanel() {
   }, [])
 
   const saveKey = async (field: 'anthropic_api_key' | 'openai_api_key' | 'google_api_key', value: string, label: string) => {
-    setSaving(field)
-    const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) { toast.error('Org não encontrada'); setSaving(null); return }
-    const payload: Record<string, string | null> = {
-      organization_id: me.organization_id,
-      [field]: value || null,
+    if (!value?.trim()) {
+      toast.error('Cole a chave antes de salvar')
+      return
     }
-    const { error } = await supabase.from('ai_settings').upsert(payload as never, { onConflict: 'organization_id' })
-    if (error) toast.error(`Erro: ${error.message}`)
-    else toast.success(`Chave ${label} salva!`)
-    setSaving(null)
+    setSaving(field)
+    const provider = field.replace('_api_key', '') as 'anthropic' | 'openai' | 'google'
+
+    try {
+      const res = await fetch('/api/ai/save-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, key: value.trim() }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'Falha ao salvar')
+
+      if (body.saved_length > 0) {
+        toast.success(`Chave ${label} salva! (${body.saved_length} caracteres no banco)`)
+      } else {
+        toast.warning(`Chave ${label} foi salva, mas o banco retornou vazio. Tenta de novo.`)
+      }
+    } catch (err) {
+      toast.error(`Erro: ${err instanceof Error ? err.message : 'desconhecido'}`)
+    } finally {
+      setSaving(null)
+    }
   }
 
   const testProvider = async (provider: 'anthropic' | 'openai' | 'google', label: string) => {
