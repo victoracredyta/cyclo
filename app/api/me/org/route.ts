@@ -22,7 +22,7 @@ export async function GET() {
 
     const { data: row, error } = await admin
       .from('users')
-      .select('id, organization_id, email, name, role')
+      .select('id, organization_id, email, full_name, role')
       .eq('id', user.id)
       .maybeSingle()
 
@@ -35,7 +35,7 @@ export async function GET() {
       }, { status: 404 })
     }
 
-    const r = row as { id: string; organization_id: string | null; email: string | null; name: string | null; role: string | null }
+    const r = row as { id: string; organization_id: string | null; email: string | null; full_name: string | null; role: string | null }
     if (!r.organization_id) {
       return NextResponse.json({
         error: 'Sua conta não está vinculada a uma organização.',
@@ -47,7 +47,7 @@ export async function GET() {
       user_id: r.id,
       organization_id: r.organization_id,
       email: r.email,
-      name: r.name,
+      full_name: r.full_name,
       role: r.role,
     })
   } catch (err) {
