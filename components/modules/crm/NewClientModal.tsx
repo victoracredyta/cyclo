@@ -93,20 +93,14 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
       console.log('[NewClientModal] onSubmit start', data)
       const supabase = createClient()
 
-      const { data: org, error: orgErr } = await supabase
-        .from('users')
-        .select('organization_id')
-        .single()
-
-      if (orgErr) {
-        console.error('[NewClientModal] users query error:', orgErr)
-        toast.error(`Erro ao identificar usuário: ${orgErr.message}`, { duration: 8000 })
+      const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+      const meJson = await meRes.json() as { organization_id?: string; error?: string }
+      if (!meRes.ok || !meJson.organization_id) {
+        console.error('[NewClientModal] /api/me/org failed:', meJson)
+        toast.error(meJson.error ?? 'Erro ao identificar organização', { duration: 8000 })
         return
       }
-      if (!org?.organization_id) {
-        toast.error('Sua conta não está vinculada a uma organização. Contate o suporte.', { duration: 8000 })
-        return
-      }
+      const org = { organization_id: meJson.organization_id }
 
       // Primary contact for header info (legacy email/phone columns)
       const primary = contacts.find(c => c.is_primary) ?? contacts[0]

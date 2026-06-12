@@ -153,20 +153,14 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
       console.log('[NewLeadModal] onSubmit start', data)
       const supabase = createClient()
 
-      const { data: me, error: meErr } = await supabase
-        .from('users')
-        .select('organization_id')
-        .single()
-
-      if (meErr) {
-        console.error('[NewLeadModal] users query error:', meErr)
-        toast.error(`Erro ao identificar usuário: ${meErr.message}`, { duration: 8000 })
+      const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+      const meJson = await meRes.json() as { organization_id?: string; error?: string }
+      if (!meRes.ok || !meJson.organization_id) {
+        console.error('[NewLeadModal] /api/me/org failed:', meJson)
+        toast.error(meJson.error ?? 'Erro ao identificar organização', { duration: 8000 })
         return
       }
-      if (!me?.organization_id) {
-        toast.error('Sua conta não está vinculada a uma organização. Contate o suporte.', { duration: 8000 })
-        return
-      }
+      const me = { organization_id: meJson.organization_id }
 
       if (!data.stage_id) {
         toast.error('Selecione uma etapa do pipeline', { duration: 6000 })
