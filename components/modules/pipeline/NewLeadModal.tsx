@@ -175,7 +175,11 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
       additional_contacts: validExtras,
     }).select('*, responsible:responsible_id(id, full_name, avatar_url)').single()
 
-    if (error) { toast.error('Erro ao criar lead'); return }
+    if (error) {
+      console.error('[NewLeadModal] insert error:', error)
+      toast.error(`Erro ao criar lead: ${error.message}`, { duration: 8000 })
+      return
+    }
     toast.success(`Lead ${data.name} criado!`)
     onCreated(lead as LeadWithResponsible)
   }

@@ -109,7 +109,11 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
       services,
     }).select().single()
 
-    if (error || !client) { toast.error('Erro ao criar cliente'); return }
+    if (error || !client) {
+      console.error('[NewClientModal] insert error:', error)
+      toast.error(`Erro ao criar cliente: ${error?.message ?? 'desconhecido'}`, { duration: 8000 })
+      return
+    }
 
     // Save contacts (only those with at least a name)
     const validContacts = contacts.filter(c => c.name.trim())
