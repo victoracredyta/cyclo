@@ -89,51 +89,79 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
   }
 
   const onSubmit = async (data: FormData) => {
-    const supabase = createClient()
-    const { data: org } = await supabase.from('users').select('organization_id').single()
-    if (!org?.organization_id) return
+    try {
+      console.log('[NewClientModal] onSubmit start', data)
+      const supabase = createClient()
 
-    // Primary contact for header info (legacy email/phone columns)
-    const primary = contacts.find(c => c.is_primary) ?? contacts[0]
+      const { data: org, error: orgErr } = await supabase
+        .from('users')
+        .select('organization_id')
+        .single()
 
-    const { data: client, error } = await supabase.from('clients').insert({
-      organization_id: org.organization_id,
-      name: data.name,
-      sector: data.sector || undefined,
-      segment_id: data.segment_id || undefined,
-      email: primary?.email || undefined,
-      phone: primary?.phone || undefined,
-      mrr: Number(data.mrr) || 0,
-      responsible_id: data.responsible_id || undefined,
-      objectives: data.objectives || undefined,
-      services,
-    }).select().single()
+      if (orgErr) {
+        console.error('[NewClientModal] users query error:', orgErr)
+        toast.error(`Erro ao identificar usuário: ${orgErr.message}`, { duration: 8000 })
+        return
+      }
+      if (!org?.organization_id) {
+        toast.error('Sua conta não está vinculada a uma organização. Contate o suporte.', { duration: 8000 })
+        return
+      }
 
-    if (error || !client) {
-      console.error('[NewClientModal] insert error:', error)
-      toast.error(`Erro ao criar cliente: ${error?.message ?? 'desconhecido'}`, { duration: 8000 })
-      return
+      // Primary contact for header info (legacy email/phone columns)
+      const primary = contacts.find(c => c.is_primary) ?? contacts[0]
+
+      const payload: Record<string, unknown> = {
+        organization_id: org.organization_id,
+        name: data.name,
+        mrr: Number(data.mrr) || 0,
+        services,
+      }
+      if (data.sector) payload.sector = data.sector
+      if (data.segment_id) payload.segment_id = data.segment_id
+      if (primary?.email) payload.email = primary.email
+      if (primary?.phone) payload.phone = primary.phone
+      if (data.responsible_id) payload.responsible_id = data.responsible_id
+      if (data.objectives) payload.objectives = data.objectives
+
+      console.log('[NewClientModal] payload:', payload)
+
+      const { data: client, error } = await supabase
+        .from('clients')
+        .insert(payload as never)
+        .select()
+        .single()
+
+      if (error || !client) {
+        console.error('[NewClientModal] insert error:', error)
+        toast.error(`Erro ao criar cliente: ${error?.message ?? 'desconhecido'}`, { duration: 10000 })
+        return
+      }
+
+      // Save contacts (only those with at least a name)
+      const validContacts = contacts.filter(c => c.name.trim())
+      if (validContacts.length > 0) {
+        const rows = validContacts.map(c => ({
+          client_id: client.id,
+          name: c.name,
+          email: c.email || null,
+          phone: c.phone || null,
+          role: c.role || null,
+          is_primary: c.is_primary,
+        }))
+        const { error: cErr } = await supabase.from('client_contacts').insert(rows)
+        if (cErr) toast.error('Cliente criado, mas falhou ao salvar contatos')
+      }
+
+      console.log('[NewClientModal] success:', client)
+      toast.success(`Cliente ${data.name} criado!`)
+      router.refresh()
+      onClose()
+      router.push(`/crm/${client.id}`)
+    } catch (err) {
+      console.error('[NewClientModal] unexpected error:', err)
+      toast.error(`Erro inesperado: ${err instanceof Error ? err.message : 'desconhecido'}`, { duration: 10000 })
     }
-
-    // Save contacts (only those with at least a name)
-    const validContacts = contacts.filter(c => c.name.trim())
-    if (validContacts.length > 0) {
-      const rows = validContacts.map(c => ({
-        client_id: client.id,
-        name: c.name,
-        email: c.email || null,
-        phone: c.phone || null,
-        role: c.role || null,
-        is_primary: c.is_primary,
-      }))
-      const { error: cErr } = await supabase.from('client_contacts').insert(rows)
-      if (cErr) toast.error('Cliente criado, mas falhou ao salvar contatos')
-    }
-
-    toast.success(`Cliente ${data.name} criado!`)
-    router.refresh()
-    onClose()
-    router.push(`/crm/${client.id}`)
   }
 
   return (

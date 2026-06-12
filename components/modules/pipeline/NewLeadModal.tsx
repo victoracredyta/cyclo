@@ -149,39 +149,72 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
   const tempLabel = TEMP_OPTIONS.find(t => t.value === temp)?.label ?? null
 
   const onSubmit = async (data: FormData) => {
-    const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) return
+    try {
+      console.log('[NewLeadModal] onSubmit start', data)
+      const supabase = createClient()
 
-    const finalOrigin = data.origin === 'Personalizado' ? (data.customOrigin || 'Personalizado') : data.origin
+      const { data: me, error: meErr } = await supabase
+        .from('users')
+        .select('organization_id')
+        .single()
 
-    const validExtras = extraContacts.filter(c => c.name.trim())
+      if (meErr) {
+        console.error('[NewLeadModal] users query error:', meErr)
+        toast.error(`Erro ao identificar usuário: ${meErr.message}`, { duration: 8000 })
+        return
+      }
+      if (!me?.organization_id) {
+        toast.error('Sua conta não está vinculada a uma organização. Contate o suporte.', { duration: 8000 })
+        return
+      }
 
-    const { data: lead, error } = await supabase.from('leads').insert({
-      organization_id: me.organization_id,
-      stage_id: data.stage_id,
-      funnel_id: data.funnel_id || undefined,
-      segment_id: data.segment_id || undefined,
-      name: data.name,
-      company: data.company || undefined,
-      value: data.value ? Number(data.value) : undefined,
-      email: data.email || undefined,
-      phone: data.phone || undefined,
-      city: data.city || undefined,
-      origin: finalOrigin || undefined,
-      priority: data.priority,
-      responsible_id: data.responsible_id || undefined,
-      next_action: data.next_action || undefined,
-      additional_contacts: validExtras,
-    }).select('*, responsible:responsible_id(id, full_name, avatar_url)').single()
+      if (!data.stage_id) {
+        toast.error('Selecione uma etapa do pipeline', { duration: 6000 })
+        return
+      }
 
-    if (error) {
-      console.error('[NewLeadModal] insert error:', error)
-      toast.error(`Erro ao criar lead: ${error.message}`, { duration: 8000 })
-      return
+      const finalOrigin = data.origin === 'Personalizado' ? (data.customOrigin || 'Personalizado') : data.origin
+      const validExtras = extraContacts.filter(c => c.name.trim())
+
+      const payload: Record<string, unknown> = {
+        organization_id: me.organization_id,
+        stage_id: data.stage_id,
+        name: data.name,
+        priority: data.priority,
+        additional_contacts: validExtras,
+      }
+      if (data.funnel_id) payload.funnel_id = data.funnel_id
+      if (data.segment_id) payload.segment_id = data.segment_id
+      if (data.company) payload.company = data.company
+      if (data.value) payload.value = Number(data.value)
+      if (data.email) payload.email = data.email
+      if (data.phone) payload.phone = data.phone
+      if (data.city) payload.city = data.city
+      if (finalOrigin) payload.origin = finalOrigin
+      if (data.responsible_id) payload.responsible_id = data.responsible_id
+      if (data.next_action) payload.next_action = data.next_action
+
+      console.log('[NewLeadModal] payload:', payload)
+
+      const { data: lead, error } = await supabase
+        .from('leads')
+        .insert(payload as never)
+        .select('*, responsible:responsible_id(id, full_name, avatar_url)')
+        .single()
+
+      if (error) {
+        console.error('[NewLeadModal] insert error:', error)
+        toast.error(`Erro ao criar lead: ${error.message}`, { duration: 10000 })
+        return
+      }
+
+      console.log('[NewLeadModal] success:', lead)
+      toast.success(`Lead ${data.name} criado!`)
+      onCreated(lead as LeadWithResponsible)
+    } catch (err) {
+      console.error('[NewLeadModal] unexpected error:', err)
+      toast.error(`Erro inesperado: ${err instanceof Error ? err.message : 'desconhecido'}`, { duration: 10000 })
     }
-    toast.success(`Lead ${data.name} criado!`)
-    onCreated(lead as LeadWithResponsible)
   }
 
   return (
