@@ -16,6 +16,11 @@ import { toast } from 'sonner'
 
 const SERVICES = ['Social Media', 'Tráfego Pago', 'SEO', 'Email Marketing', 'Branding', 'Criação de Conteúdo', 'Website', 'Consultoria']
 const SECTORS = ['E-commerce', 'Saúde', 'Educação', 'Imobiliário', 'Gastronomia', 'Tecnologia', 'Varejo', 'Serviços', 'Indústria', 'Outro']
+const ORIGINS = [
+  'Google Ads', 'Meta Ads', 'LinkedIn Ads', 'Instagram Orgânico',
+  'TikTok Ads', 'WhatsApp', 'Indicação', 'Prospecção Ativa',
+  'Evento', 'E-mail Marketing', 'Orgânico / SEO', 'Referral',
+]
 
 const schema = z.object({
   name: z.string().min(2, 'Nome obrigatório'),
@@ -24,6 +29,8 @@ const schema = z.object({
   mrr: z.string().optional(),
   responsible_id: z.string().optional(),
   objectives: z.string().optional(),
+  origin: z.string().optional(),
+  referredBy: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -45,6 +52,7 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
   const [customService, setCustomService] = useState('')
   const [segments, setSegments] = useState<SegmentOption[]>([])
   const [contacts, setContacts] = useState<Contact[]>([blankContact(true)])
+  const [selectedOrigin, setSelectedOrigin] = useState('')
 
   const addCustomService = () => {
     const v = customService.trim()
@@ -117,6 +125,8 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
       if (primary?.phone) payload.phone = primary.phone
       if (data.responsible_id) payload.responsible_id = data.responsible_id
       if (data.objectives) payload.objectives = data.objectives
+      if (data.origin) payload.origin = data.origin
+      if (data.referredBy?.trim()) payload.referred_by = data.referredBy.trim()
 
       console.log('[NewClientModal] payload:', payload)
 
@@ -219,6 +229,22 @@ export function NewClientModal({ users, onClose }: NewClientModalProps) {
                   placeholder="Objetivo principal do cliente com sua empresa..."
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                 />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-sm">Como chegou? (origem)</Label>
+                <Select onValueChange={v => { setSelectedOrigin(v as string); setValue('origin', v as string) }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger>
+                  <SelectContent>
+                    {ORIGINS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {selectedOrigin === 'Indicação' && (
+                  <Input
+                    placeholder="Quem indicou? (opcional — nome ou empresa)"
+                    {...register('referredBy')}
+                    className="mt-2"
+                  />
+                )}
               </div>
             </div>
           </section>

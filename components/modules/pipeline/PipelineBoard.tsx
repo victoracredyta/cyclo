@@ -382,8 +382,30 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
                       </p>
                     ) : (
                       <div className="space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => { setFilterSeller('all'); setShowMembersDropdown(false) }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-muted/40 transition-colors text-left',
+                            filterSeller === 'all' && 'bg-[#5B8CFF]/10'
+                          )}
+                        >
+                          <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+                            ALL
+                          </div>
+                          <span className="text-xs font-medium flex-1">Todos os responsáveis</span>
+                          {filterSeller === 'all' && <span className="text-[10px] text-[#5B8CFF] font-bold">✓</span>}
+                        </button>
                         {members.map(u => (
-                          <div key={u.id} className="flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-muted/40 transition-colors">
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => { setFilterSeller(u.id); setShowMembersDropdown(false) }}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-muted/40 transition-colors text-left',
+                              filterSeller === u.id && 'bg-[#5B8CFF]/10'
+                            )}
+                          >
                             <Avatar className="h-6 w-6">
                               <AvatarImage src={u.avatar_url ?? undefined} />
                               <AvatarFallback className="text-[9px] bg-[#5B8CFF] text-white">
@@ -391,7 +413,8 @@ export function PipelineBoard({ initialStages, initialLeads, users, initialFunne
                               </AvatarFallback>
                             </Avatar>
                             <span className="text-xs font-medium flex-1 truncate">{u.full_name?.trim() || 'Sem nome'}</span>
-                          </div>
+                            {filterSeller === u.id && <span className="text-[10px] text-[#5B8CFF] font-bold">✓</span>}
+                          </button>
                         ))}
                       </div>
                     )}

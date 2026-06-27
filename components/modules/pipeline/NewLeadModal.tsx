@@ -27,6 +27,7 @@ const schema = z.object({
   city: z.string().optional(),
   origin: z.string().optional(),
   customOrigin: z.string().optional(),
+  referredBy: z.string().optional(),
   priority: z.enum(['alta', 'media', 'baixa']),
   stage_id: z.string(),
   funnel_id: z.string().optional(),
@@ -185,6 +186,7 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
       if (data.phone) payload.phone = data.phone
       if (data.city) payload.city = data.city
       if (finalOrigin) payload.origin = finalOrigin
+      if (data.referredBy?.trim()) payload.referred_by = data.referredBy.trim()
       if (data.responsible_id) payload.responsible_id = data.responsible_id
       if (data.next_action) payload.next_action = data.next_action
 
@@ -314,6 +316,13 @@ export function NewLeadModal({ stages, users, defaultStageId, defaultFunnelId, f
                 <Input
                   placeholder="Digite a origem personalizada..."
                   {...register('customOrigin')}
+                  className="mt-2"
+                />
+              )}
+              {selectedOrigin === 'Indicação' && (
+                <Input
+                  placeholder="Quem indicou? (opcional — nome ou empresa)"
+                  {...register('referredBy')}
                   className="mt-2"
                 />
               )}
