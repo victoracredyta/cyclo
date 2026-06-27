@@ -346,18 +346,19 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     const name = (stageName ?? stageInputByFunnel[funnelId] ?? '').trim()
     if (!name) return
     const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) return
+    const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+    const meJson = await meRes.json() as { organization_id?: string; error?: string }
+    if (!meRes.ok || !meJson.organization_id) { toast.error(meJson.error ?? 'Org não encontrada', { duration: 8000 }); return }
     const funnel = funnels.find(f => f.id === funnelId)
     const nextOrder = funnel ? (funnel.stages.length > 0 ? Math.max(...funnel.stages.map(s => s.order_index)) + 1 : 0) : 0
     const { data, error } = await supabase.from('pipeline_stages').insert({
-      organization_id: me.organization_id,
+      organization_id: meJson.organization_id,
       funnel_id: funnelId,
       name,
       color: '#5B8CFF',
       order_index: nextOrder,
     }).select().single()
-    if (error || !data) { toast.error('Erro ao criar etapa'); return }
+    if (error || !data) { toast.error(`Erro ao criar etapa: ${error?.message ?? 'desconhecido'}`, { duration: 10000 }); return }
     const newStage: FunnelStage = { id: data.id, funnel_id: funnelId, name: data.name, color: data.color, order_index: data.order_index, description: data.description }
     setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: [...f.stages, newStage] } : f))
     setStageInputByFunnel(prev => ({ ...prev, [funnelId]: '' }))
@@ -400,12 +401,13 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
   const createSegment = async () => {
     if (!newSegmentName.trim()) return
     const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) return
+    const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+    const meJson = await meRes.json() as { organization_id?: string; error?: string }
+    if (!meRes.ok || !meJson.organization_id) { toast.error(meJson.error ?? 'Org não encontrada', { duration: 8000 }); return }
     const { data, error } = await supabase.from('segments').insert({
-      organization_id: me.organization_id, name: newSegmentName.trim(), color: newSegmentColor,
+      organization_id: meJson.organization_id, name: newSegmentName.trim(), color: newSegmentColor,
     }).select().single()
-    if (error || !data) { toast.error('Erro ao criar segmento'); return }
+    if (error || !data) { toast.error(`Erro ao criar segmento: ${error?.message ?? 'desconhecido'}`, { duration: 10000 }); return }
     setSegments(prev => [...prev, { id: data.id, name: data.name, color: data.color }])
     setNewSegmentName('')
     toast.success('Segmento criado!')
@@ -424,10 +426,11 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     setRotationUserIds(userIds)
     setSavingRotation(true)
     const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) { setSavingRotation(false); return }
+    const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+    const meJson = await meRes.json() as { organization_id?: string; error?: string }
+    if (!meRes.ok || !meJson.organization_id) { setSavingRotation(false); return }
     await supabase.from('lead_rotation_config').upsert({
-      organization_id: me.organization_id, enabled, user_ids: userIds,
+      organization_id: meJson.organization_id, enabled, user_ids: userIds,
     }, { onConflict: 'organization_id' })
     setSavingRotation(false)
   }
@@ -445,8 +448,9 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     }
     setUploadingAvatar(true)
     const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    const orgId = me?.organization_id ?? 'org'
+    const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+    const meJson = await meRes.json() as { organization_id?: string }
+    const orgId = meJson.organization_id ?? 'org'
     const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
     const path = `${orgId}/${appUser.id}-${Date.now()}.${ext}`
     const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
@@ -1513,9 +1517,10 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
                   onClick={async () => {
                     if (segments.find(s => s.name === preset)) { toast.info('Segmento já existe'); return }
                     const supabase = createClient()
-                    const { data: me } = await supabase.from('users').select('organization_id').single()
-                    if (!me?.organization_id) return
-                    const { data, error } = await supabase.from('segments').insert({ organization_id: me.organization_id, name: preset, color: newSegmentColor }).select().single()
+                    const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+                    const meJson = await meRes.json() as { organization_id?: string; error?: string }
+                    if (!meRes.ok || !meJson.organization_id) { toast.error(meJson.error ?? 'Org não encontrada'); return }
+                    const { data, error } = await supabase.from('segments').insert({ organization_id: meJson.organization_id, name: preset, color: newSegmentColor }).select().single()
                     if (!error && data) { setSegments(prev => [...prev, { id: data.id, name: data.name, color: data.color }]); toast.success(`"${preset}" adicionado!`) }
                   }}
                   className="text-xs px-2.5 py-1 rounded-full border border-border hover:border-[#5B8CFF]/40 hover:bg-[#5B8CFF]/5 transition-colors"
