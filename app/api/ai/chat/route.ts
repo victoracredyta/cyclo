@@ -2,7 +2,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { resolveAIKey } from '@/lib/ai/getApiKey'
+import { buildCrmContext } from '@/lib/ai/buildCrmContext'
 
 const SYSTEM_PROMPT = `Você é o CYCLO AI, assistente estratégico para profissionais brasileiros que usam o CYCLO como CRM.
 
@@ -39,8 +41,25 @@ export async function POST(req: Request) {
     return jsonError(err instanceof Error ? err.message : 'Erro ao buscar chave de API', 400)
   }
 
+  // Build CRM context from user's org (uses service role to bypass RLS)
+  let crmContext = ''
   try {
-    const stream = await streamFor(resolved.provider, resolved.key, messages)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+    if (supabaseUrl && serviceKey) {
+      const admin = createAdminClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+      const { data: me } = await admin.from('users').select('organization_id').eq('id', user.id).maybeSingle()
+      const orgId = (me as { organization_id?: string } | null)?.organization_id
+      if (orgId) crmContext = await buildCrmContext(orgId)
+    }
+  } catch (err) {
+    console.error('[ai/chat] failed to build CRM context:', err)
+  }
+
+  const fullSystemPrompt = SYSTEM_PROMPT + crmContext
+
+  try {
+    const stream = await streamFor(resolved.provider, resolved.key, messages, fullSystemPrompt)
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -64,7 +83,7 @@ function jsonError(message: string, status: number) {
   })
 }
 
-async function streamFor(provider: 'anthropic' | 'openai' | 'google', key: string, messages: Msg[]): Promise<ReadableStream> {
+async function streamFor(provider: 'anthropic' | 'openai' | 'google', key: string, messages: Msg[], systemPrompt: string): Promise<ReadableStream> {
   const encoder = new TextEncoder()
 
   if (provider === 'anthropic') {
@@ -72,7 +91,7 @@ async function streamFor(provider: 'anthropic' | 'openai' | 'google', key: strin
     const stream = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages,
       stream: true,
     })
@@ -98,7 +117,7 @@ async function streamFor(provider: 'anthropic' | 'openai' | 'google', key: strin
     const stream = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         ...messages,
       ],
       stream: true,
@@ -122,7 +141,7 @@ async function streamFor(provider: 'anthropic' | 'openai' | 'google', key: strin
 
   // google (Gemini)
   const genAI = new GoogleGenerativeAI(key)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', systemInstruction: SYSTEM_PROMPT })
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', systemInstruction: systemPrompt })
 
   // Convert OpenAI-style messages → Gemini's chat history format
   // Gemini expects role 'user' or 'model' (not 'assistant')
