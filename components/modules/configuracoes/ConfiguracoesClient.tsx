@@ -277,15 +277,19 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
     if (!newFunnelName.trim()) return
     setSavingFunnel(true)
     const supabase = createClient()
-    const { data: me } = await supabase.from('users').select('organization_id').single()
-    if (!me?.organization_id) { toast.error('Org não encontrada'); setSavingFunnel(false); return }
+    const meRes = await fetch('/api/me/org', { cache: 'no-store' })
+    const meJson = await meRes.json() as { organization_id?: string; error?: string }
+    if (!meRes.ok || !meJson.organization_id) {
+      toast.error(meJson.error ?? 'Org não encontrada', { duration: 8000 })
+      setSavingFunnel(false); return
+    }
     const { data: f, error } = await supabase.from('funnels').insert({
-      organization_id: me.organization_id,
+      organization_id: meJson.organization_id,
       name: newFunnelName.trim(),
       description: newFunnelDesc || null,
       is_default: newFunnelDefault,
     }).select().single()
-    if (error || !f) { toast.error('Erro ao criar funil'); setSavingFunnel(false); return }
+    if (error || !f) { toast.error(`Erro ao criar funil: ${error?.message ?? 'desconhecido'}`, { duration: 10000 }); setSavingFunnel(false); return }
     const userIdsToInsert = newFunnelUserIds.length > 0 ? newFunnelUserIds : orgUsers.map(u => u.id)
     if (userIdsToInsert.length > 0) {
       await supabase.from('funnel_users').insert(userIdsToInsert.map(uid => ({ funnel_id: f.id, user_id: uid })))
