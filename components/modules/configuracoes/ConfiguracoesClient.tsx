@@ -344,10 +344,12 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
 
   const addFunnelStage = async (funnelId: string, stageName?: string) => {
     const name = (stageName ?? stageInputByFunnel[funnelId] ?? '').trim()
-    if (!name) return
+    console.log('[addFunnelStage] called', { funnelId, name })
+    if (!name) { toast.error('Digite um nome pra etapa'); return }
     const supabase = createClient()
     const meRes = await fetch('/api/me/org', { cache: 'no-store' })
     const meJson = await meRes.json() as { organization_id?: string; error?: string }
+    console.log('[addFunnelStage] me/org:', meJson)
     if (!meRes.ok || !meJson.organization_id) { toast.error(meJson.error ?? 'Org não encontrada', { duration: 8000 }); return }
     const funnel = funnels.find(f => f.id === funnelId)
     const nextOrder = funnel ? (funnel.stages.length > 0 ? Math.max(...funnel.stages.map(s => s.order_index)) + 1 : 0) : 0
@@ -358,6 +360,7 @@ export function ConfiguracoesClient({ appUser, orgUsers: initialUsers }: Props) 
       color: '#5B8CFF',
       order_index: nextOrder,
     }).select().single()
+    console.log('[addFunnelStage] insert result:', { data, error })
     if (error || !data) { toast.error(`Erro ao criar etapa: ${error?.message ?? 'desconhecido'}`, { duration: 10000 }); return }
     const newStage: FunnelStage = { id: data.id, funnel_id: funnelId, name: data.name, color: data.color, order_index: data.order_index, description: data.description }
     setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: [...f.stages, newStage] } : f))
